@@ -26,6 +26,13 @@ This is separate from unit tests inside individual repos. Those should stay in t
 3) Commit the upgrade + runtime-config attestation on-chain (InstanceController).
 4) Run long-running traffic + attack/tamper flows (hours, if needed).
 
+## Logs and reports
+
+The `attacker` container writes:
+
+- JSONL events: `blackcat-testing/var/harness/minimal-prod/logs/events.<run_id>.jsonl`
+- JSON summary: `blackcat-testing/var/harness/minimal-prod/logs/summary.<run_id>.json`
+
 ## Security note
 
 This harness never commits private keys to git. Broadcast keys must be provided at runtime via env/secret managers.

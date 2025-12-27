@@ -8,41 +8,130 @@ TAMPER_AFTER_SEC="${TAMPER_AFTER_SEC:-40}"
 EXPECT_TRUST_FAIL_AFTER_TAMPER="${EXPECT_TRUST_FAIL_AFTER_TAMPER:-1}"
 EXPECT_STALE_READS_ON_RPC_OUTAGE="${EXPECT_STALE_READS_ON_RPC_OUTAGE:-0}"
 EXPECT_TRUST_OK_AT_START="${EXPECT_TRUST_OK_AT_START:-0}"
+ATTACK_LOG_DIR="${ATTACK_LOG_DIR:-/var/log/blackcat-testing}"
+ATTACK_LOG_EVERY_SEC="${ATTACK_LOG_EVERY_SEC:-1}"
+ATTACK_READY_TIMEOUT_SEC="${ATTACK_READY_TIMEOUT_SEC:-60}"
+ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS="${ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS:-30}"
 
 echo "[attacker] target=${TARGET_BASE_URL}"
 echo "[attacker] duration_sec=${ATTACK_DURATION_SEC} rps=${ATTACK_RPS} tamper_after_sec=${TAMPER_AFTER_SEC} expect_trust_fail_after_tamper=${EXPECT_TRUST_FAIL_AFTER_TAMPER} expect_stale_reads_on_rpc_outage=${EXPECT_STALE_READS_ON_RPC_OUTAGE}"
+echo "[attacker] log_dir=${ATTACK_LOG_DIR} log_every_sec=${ATTACK_LOG_EVERY_SEC} ready_timeout_sec=${ATTACK_READY_TIMEOUT_SEC} max_consecutive_health_fails=${ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS}"
 
 start_ts="$(date +%s)"
 tampered="0"
+consecutive_health_fails="0"
+
+run_id="$(date -u +%Y%m%dT%H%M%SZ).$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+mkdir -p "${ATTACK_LOG_DIR}"
+events_file="${ATTACK_LOG_DIR}/events.${run_id}.jsonl"
+summary_file="${ATTACK_LOG_DIR}/summary.${run_id}.json"
+meta_file="${ATTACK_LOG_DIR}/meta.${run_id}.json"
+
+jq -n \
+  --arg run_id "${run_id}" \
+  --arg started_at "$(date -u +%FT%TZ)" \
+  --arg target "${TARGET_BASE_URL}" \
+  --arg duration_sec "${ATTACK_DURATION_SEC}" \
+  --arg rps "${ATTACK_RPS}" \
+  --arg tamper_after_sec "${TAMPER_AFTER_SEC}" \
+  --arg expect_trust_ok_at_start "${EXPECT_TRUST_OK_AT_START}" \
+  --arg expect_trust_fail_after_tamper "${EXPECT_TRUST_FAIL_AFTER_TAMPER}" \
+  --arg expect_stale_reads_on_rpc_outage "${EXPECT_STALE_READS_ON_RPC_OUTAGE}" \
+  '{
+    run_id:$run_id,
+    started_at:$started_at,
+    target:$target,
+    duration_sec:($duration_sec|tonumber),
+    rps:($rps|tonumber),
+    tamper_after_sec:($tamper_after_sec|tonumber),
+    expectations:{
+      trust_ok_at_start:($expect_trust_ok_at_start|tonumber == 1),
+      trust_fail_after_tamper:($expect_trust_fail_after_tamper|tonumber == 1),
+      stale_reads_on_rpc_outage:($expect_stale_reads_on_rpc_outage|tonumber == 1)
+    }
+  }' > "${meta_file}"
 
 req_code() {
   local method="$1"
   local path="$2"
   local url="${TARGET_BASE_URL}${path}"
 
-  if [[ "$method" == "POST" ]]; then
-    curl -sS -o /dev/null -w "%{http_code}" -X POST "$url" || echo "000"
-    return
-  fi
-
-  curl -sS -o /dev/null -w "%{http_code}" "$url" || echo "000"
+  curl -sS -o /dev/null -w "%{http_code}" -X "$method" "$url" || echo "000"
 }
 
 attack_invalid_methods() {
-  curl -sS -o /dev/null -w "%{http_code}\n" -X TRACE "${TARGET_BASE_URL}/health" || true
-  curl -sS -o /dev/null -w "%{http_code}\n" -X PUT "${TARGET_BASE_URL}/health" || true
+  local _c
+  _c="$(req_code TRACE /health)" || true
+  _c="$(req_code PUT /health)" || true
 }
 
 attack_path_traversal() {
-  curl -sS -o /dev/null -w "%{http_code}\n" "${TARGET_BASE_URL}/..%2f..%2fetc%2fpasswd" || true
-  curl -sS -o /dev/null -w "%{http_code}\n" "${TARGET_BASE_URL}/php://filter" || true
+  local _c
+  _c="$(req_code GET /..%2f..%2fetc%2fpasswd)" || true
+  _c="$(req_code GET /php://filter)" || true
 }
 
-health_json() {
-  curl -fsS "${TARGET_BASE_URL}/health" | jq -c '{enforcement:.trust.enforcement,trusted_now:.trust.trusted_now,rpc_ok_now:.trust.rpc_ok_now,read_allowed:.trust.read_allowed,write_allowed:.trust.write_allowed,paused:.trust.paused,error_codes:.trust.error_codes}'
+fetch_health() {
+  local url="${TARGET_BASE_URL}/health"
+  local out
+  out="$(curl -sS -m 5 -w '\n%{http_code}' "$url" || true)"
+  HEALTH_CODE="$(printf '%s' "$out" | tail -n 1 | tr -d '\r')"
+  HEALTH_BODY="$(printf '%s' "$out" | sed '$d')"
 }
 
-initial_health="$(health_json || echo '{}')"
+health_compact() {
+  if [[ "${HEALTH_CODE}" == "200" ]]; then
+    echo "${HEALTH_BODY}" | jq -c '{ok:true,http_code:200,enforcement:(.trust.enforcement//null),trusted_now:(.trust.trusted_now//null),rpc_ok_now:(.trust.rpc_ok_now//null),read_allowed:(.trust.read_allowed//null),write_allowed:(.trust.write_allowed//null),paused:(.trust.paused//null),error_codes:(.trust.error_codes//[])}' 2>/dev/null \
+      || jq -nc --arg code "${HEALTH_CODE}" '{ok:false,http_code:($code|tonumber? // 0),parse_error:true}'
+    return
+  fi
+
+  jq -nc --arg code "${HEALTH_CODE}" '{ok:false,http_code:($code|tonumber? // 0)}'
+}
+
+wait_for_ready() {
+  local timeout_sec="$1"
+  local expect_trust_ok="$2"
+  local start
+  start="$(date +%s)"
+
+  while true; do
+    fetch_health
+    local now
+    now="$(date +%s)"
+    local elapsed
+    elapsed="$((now - start))"
+
+    if (( elapsed > timeout_sec )); then
+      echo "[attacker] FAIL: readiness timeout after ${timeout_sec}s (last health_code=${HEALTH_CODE})" >&2
+      return 1
+    fi
+
+    if [[ "${HEALTH_CODE}" != "200" ]]; then
+      sleep 1
+      continue
+    fi
+
+    local compact
+    compact="$(health_compact || echo '{}')"
+    if [[ "${expect_trust_ok}" == "1" ]]; then
+      if [[ "$(echo "$compact" | jq -r '.trusted_now // "null"' || echo "null")" == "true" ]]; then
+        echo "[attacker] ready: trusted_now=true"
+        return 0
+      fi
+      sleep 1
+      continue
+    fi
+
+    echo "[attacker] ready: health endpoint reachable"
+    return 0
+  done
+}
+
+wait_for_ready "${ATTACK_READY_TIMEOUT_SEC}" "${EXPECT_TRUST_OK_AT_START}"
+
+fetch_health
+initial_health="$(health_compact || echo '{}')"
 echo "[attacker] initial health=${initial_health}"
 
 if (( EXPECT_TRUST_OK_AT_START == 1 )); then
@@ -62,15 +151,18 @@ while true; do
   if (( tampered == 0 && elapsed >= TAMPER_AFTER_SEC )); then
     tampered="1"
     echo "[attacker] NOTE: filesystem/config tamper is expected to be performed by the app container (entrypoint.sh) based on BLACKCAT_TESTING_TAMPER_*."
-    echo "[attacker] trusted_now_before_tamper=$(health_json || echo '?')"
+    fetch_health
+    echo "[attacker] health_before_tamper=$(health_compact || echo '?')"
   fi
 
-  health="$(health_json || echo '{}')"
-  enforcement="$(echo "$health" | jq -r '.enforcement // "null"' || echo "null")"
-  trusted_now="$(echo "$health" | jq -r '.trusted_now // "null"' || echo "null")"
-  rpc_ok_now="$(echo "$health" | jq -r '.rpc_ok_now // "null"' || echo "null")"
-  read_allowed="$(echo "$health" | jq -r '.read_allowed // "null"' || echo "null")"
-  write_allowed="$(echo "$health" | jq -r '.write_allowed // "null"' || echo "null")"
+  fetch_health
+  health="$(health_compact || echo '{}')"
+  ok="$(echo "$health" | jq -r '.ok // false' 2>/dev/null || echo "false")"
+  enforcement="$(echo "$health" | jq -r '.enforcement // "null"' 2>/dev/null || echo "null")"
+  trusted_now="$(echo "$health" | jq -r '.trusted_now // "null"' 2>/dev/null || echo "null")"
+  rpc_ok_now="$(echo "$health" | jq -r '.rpc_ok_now // "null"' 2>/dev/null || echo "null")"
+  read_allowed="$(echo "$health" | jq -r '.read_allowed // "null"' 2>/dev/null || echo "null")"
+  write_allowed="$(echo "$health" | jq -r '.write_allowed // "null"' 2>/dev/null || echo "null")"
 
   # Normal traffic
   code_health="$(req_code GET /health)"
@@ -86,7 +178,17 @@ while true; do
     echo "[attacker] t=${elapsed}s health=${code_health} enforcement=${enforcement} trusted_now=${trusted_now} rpc_ok_now=${rpc_ok_now} read_allowed=${read_allowed} write_allowed=${write_allowed} | db_read=${code_db_read} db_write=${code_db_write} bypass_pdo=${code_bypass_pdo}"
   fi
 
-  if [[ "$enforcement" == "strict" ]]; then
+  if [[ "${code_health}" != "200" ]]; then
+    consecutive_health_fails="$((consecutive_health_fails + 1))"
+    if (( consecutive_health_fails >= ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS )); then
+      echo "[attacker] FAIL: /health unavailable for too long (consecutive=${consecutive_health_fails}, last_code=${code_health})" >&2
+      exit 20
+    fi
+  else
+    consecutive_health_fails="0"
+  fi
+
+  if [[ "$enforcement" == "strict" && "${ok}" == "true" ]]; then
     if [[ "$write_allowed" != "true" && "$code_db_write" == "200" ]]; then
       echo "[attacker] FAIL: write_allowed=false but /db/write returned 200 (write must be denied in strict mode)" >&2
       exit 11
@@ -118,8 +220,56 @@ while true; do
     fi
   fi
 
+  if (( ATTACK_LOG_EVERY_SEC > 0 && elapsed % ATTACK_LOG_EVERY_SEC == 0 )); then
+    jq -nc \
+      --arg run_id "${run_id}" \
+      --arg ts "$(date -u +%FT%TZ)" \
+      --argjson t "${elapsed}" \
+      --arg code_health "${code_health}" \
+      --arg code_db_read "${code_db_read}" \
+      --arg code_db_write "${code_db_write}" \
+      --arg code_bypass_pdo "${code_bypass_pdo}" \
+      --argjson health "${health}" \
+      '{
+        run_id:$run_id,
+        ts:$ts,
+        t_sec:$t,
+        http:{
+          health:($code_health|tonumber? // 0),
+          db_read:($code_db_read|tonumber? // 0),
+          db_write:($code_db_write|tonumber? // 0),
+          bypass_pdo:($code_bypass_pdo|tonumber? // 0)
+        },
+        health:$health
+      }' >> "${events_file}"
+  fi
+
   sleep "$(awk "BEGIN {print 1/${ATTACK_RPS}}")"
 done
 
 echo "[attacker] done"
-echo "[attacker] final health=$(health_json || echo '{}')"
+fetch_health
+final_health="$(health_compact || echo '{}')"
+echo "[attacker] final health=${final_health}"
+
+if [[ -f "${events_file}" ]]; then
+  jq -s \
+    --arg run_id "${run_id}" \
+    --arg started_at "$(jq -r '.started_at // null' "${meta_file}" 2>/dev/null || echo null)" \
+    --arg ended_at "$(date -u +%FT%TZ)" \
+    '{
+      run_id:$run_id,
+      started_at:$started_at,
+      ended_at:$ended_at,
+      ticks:length,
+      health_http_codes:(map(.http.health)|group_by(.)|map({code:.[0],count:length})),
+      db_write_http_codes:(map(.http.db_write)|group_by(.)|map({code:.[0],count:length})),
+      db_read_http_codes:(map(.http.db_read)|group_by(.)|map({code:.[0],count:length})),
+      trust_true:(map(select(.health.trusted_now==true))|length),
+      rpc_ok_true:(map(select(.health.rpc_ok_now==true))|length),
+      read_allowed_true:(map(select(.health.read_allowed==true))|length),
+      write_allowed_true:(map(select(.health.write_allowed==true))|length)
+    }' "${events_file}" > "${summary_file}" || true
+  echo "[attacker] wrote events=${events_file}"
+  echo "[attacker] wrote summary=${summary_file}"
+fi
