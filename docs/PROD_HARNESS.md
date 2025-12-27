@@ -14,6 +14,10 @@ This is separate from unit tests inside individual repos. Those should stay in t
 - `environments/minimal-site/` — the target “website” used for testing.
 - `docker/minimal-prod/` — docker-compose stack for the minimal site + DB + attacker.
 
+## Runbooks
+
+- Edgen (chain_id `4207`): `docs/EDGEN_MINIMAL_PROD_RUNBOOK.md`
+
 ## Typical flow (high level)
 
 1) Build/boot the docker stack.
@@ -24,4 +28,3 @@ This is separate from unit tests inside individual repos. Those should stay in t
 ## Security note
 
 This harness never commits private keys to git. Broadcast keys must be provided at runtime via env/secret managers.
-

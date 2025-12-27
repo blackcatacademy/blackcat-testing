@@ -7,6 +7,7 @@ ATTACK_RPS="${ATTACK_RPS:-5}"
 TAMPER_AFTER_SEC="${TAMPER_AFTER_SEC:-40}"
 EXPECT_TRUST_FAIL_AFTER_TAMPER="${EXPECT_TRUST_FAIL_AFTER_TAMPER:-1}"
 EXPECT_STALE_READS_ON_RPC_OUTAGE="${EXPECT_STALE_READS_ON_RPC_OUTAGE:-0}"
+EXPECT_TRUST_OK_AT_START="${EXPECT_TRUST_OK_AT_START:-0}"
 
 echo "[attacker] target=${TARGET_BASE_URL}"
 echo "[attacker] duration_sec=${ATTACK_DURATION_SEC} rps=${ATTACK_RPS} tamper_after_sec=${TAMPER_AFTER_SEC} expect_trust_fail_after_tamper=${EXPECT_TRUST_FAIL_AFTER_TAMPER} expect_stale_reads_on_rpc_outage=${EXPECT_STALE_READS_ON_RPC_OUTAGE}"
@@ -41,7 +42,15 @@ health_json() {
   curl -fsS "${TARGET_BASE_URL}/health" | jq -c '{trusted_now:.trust.trusted_now,rpc_ok_now:.trust.rpc_ok_now,read_allowed:.trust.read_allowed,write_allowed:.trust.write_allowed,paused:.trust.paused,error_codes:.trust.error_codes}'
 }
 
-echo "[attacker] initial health=$(health_json || echo '{}')"
+initial_health="$(health_json || echo '{}')"
+echo "[attacker] initial health=${initial_health}"
+
+if (( EXPECT_TRUST_OK_AT_START == 1 )); then
+  if [[ "$(echo "$initial_health" | jq -r '.trusted_now // "null"' || echo "null")" != "true" ]]; then
+    echo "[attacker] FAIL: expected trusted_now=true at start (chain/config not provisioned?)" >&2
+    exit 10
+  fi
+fi
 
 while true; do
   now="$(date +%s)"
@@ -74,6 +83,13 @@ if (( tampered == 0 && elapsed >= TAMPER_AFTER_SEC )); then
 
   if (( elapsed % 10 == 0 )); then
     echo "[attacker] t=${elapsed}s health=${code_health} trusted_now=${trusted_now} rpc_ok_now=${rpc_ok_now} read_allowed=${read_allowed} write_allowed=${write_allowed} | db_read=${code_db_read} db_write=${code_db_write} bypass_pdo=${code_bypass_pdo}"
+  fi
+
+  if [[ "$trusted_now" == "true" ]]; then
+    if [[ "$code_bypass_pdo" == "200" ]]; then
+      echo "[attacker] FAIL: /bypass/pdo returned 200 while trusted (raw PDO bypass must be denied)" >&2
+      exit 11
+    fi
   fi
 
   if (( EXPECT_TRUST_FAIL_AFTER_TAMPER == 1 && elapsed > (TAMPER_AFTER_SEC + 10) )); then
