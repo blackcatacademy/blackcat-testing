@@ -7,7 +7,6 @@ use BlackCat\Core\Database;
 use BlackCat\Core\Kernel\HttpKernel;
 use BlackCat\Core\Kernel\HttpKernelContext;
 use BlackCat\Core\Kernel\HttpKernelOptions;
-use BlackCat\Core\Kernel\HttpKernelResponse;
 use BlackCat\Core\TrustKernel\TrustKernelException;
 
 require __DIR__ . '/../../vendor/autoload.php';
@@ -24,14 +23,6 @@ $opts = new HttpKernelOptions();
 if ($path === '/health') {
     $opts->checkTrustOnRequest = false;
 }
-
-$boot = HttpKernel::bootstrapOrReject($_SERVER, $opts);
-if ($boot instanceof HttpKernelResponse) {
-    $boot->send();
-    return;
-}
-
-$ctx = $boot;
 
 $sendJson = static function (int $status, array $payload): void {
     if (!headers_sent()) {
@@ -87,7 +78,8 @@ $initSchema = static function (Database $db): void {
     );
 };
 
-HttpKernel::run(static function (HttpKernelContext $kernelCtx) use ($path, $sendJson, $sendText, $ensureDb, $initSchema): void {
+HttpKernel::run(
+    static function (HttpKernelContext $kernelCtx) use ($path, $sendJson, $sendText, $ensureDb, $initSchema): void {
     if ($path === '/health') {
         // Intentionally exclude local filesystem details (computed_root) from the public output.
         $status = $kernelCtx->kernel->check()->toArray();
@@ -154,4 +146,7 @@ HttpKernel::run(static function (HttpKernelContext $kernelCtx) use ($path, $send
     }
 
     $sendText(404, 'Not Found');
-});
+},
+    $_SERVER,
+    $opts,
+);
