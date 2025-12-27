@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "97c975db76c13bb6d37495e30d1838a1",
+    "content-hash": "aaaa1f5011e1efed207aa53e4336e38f",
     "packages": [
         {
             "name": "blackcatacademy/blackcat-config",
@@ -12,7 +12,7 @@
             "dist": {
                 "type": "path",
                 "url": "../blackcat-config",
-                "reference": "9c36b95aa4e504b5635fcad51c1d2617219d5070"
+                "reference": "18299e9ea24eaef662d9e83cdb923d5ea711c586"
             },
             "require": {
                 "ext-json": "*",
@@ -50,7 +50,7 @@
             ],
             "description": "Secure configuration hub/layer for the BlackCat ecosystem (profiles, hardening checks, compatible config sources).",
             "transport-options": {
-                "symlink": true,
+                "symlink": false,
                 "relative": true
             }
         },
@@ -60,7 +60,7 @@
             "dist": {
                 "type": "path",
                 "url": "../blackcat-core",
-                "reference": "b3e1a5efe2d83adad99977880c50fbecdbf0a268"
+                "reference": "306439e7675720711bd3faefe0d47b9945c91633"
             },
             "require": {
                 "ext-json": "*",
@@ -152,7 +152,7 @@
                 "source": "https://github.com/blackcatacademy/blackcat-core"
             },
             "transport-options": {
-                "symlink": true,
+                "symlink": false,
                 "relative": true
             }
         },
