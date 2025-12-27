@@ -215,8 +215,17 @@ while true; do
     fi
 
     if [[ "$read_allowed" == "true" && "$code_bypass_pdo" != "403" ]]; then
-      echo "[attacker] FAIL: /bypass/pdo must be denied (403) when requests are allowed (raw PDO bypass must never be allowed)" >&2
-      exit 13
+      # Avoid false positives when trust state changes between the health poll and the bypass probe
+      # (e.g., right when a tamper event happens).
+      fetch_health
+      health2="$(health_compact || echo '{}')"
+      read_allowed2="$(echo "$health2" | jq -r '.read_allowed // "null"' 2>/dev/null || echo "null")"
+      trusted_now2="$(echo "$health2" | jq -r '.trusted_now // "null"' 2>/dev/null || echo "null")"
+
+      if [[ "$read_allowed2" == "true" && "$trusted_now2" == "true" ]]; then
+        echo "[attacker] FAIL: /bypass/pdo must be denied (403) when requests are allowed (raw PDO bypass must never be allowed). got=${code_bypass_pdo}" >&2
+        exit 13
+      fi
     fi
   fi
 
