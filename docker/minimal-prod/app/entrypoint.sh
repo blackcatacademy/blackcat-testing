@@ -138,6 +138,31 @@ if [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then
       modify_file)
         printf "\n/* blackcat-testing tamper: %s */\n" "$(date -u +%FT%TZ)" >> /srv/blackcat/site/public/index.php || true
         ;;
+      modify_config)
+        php -r '
+          $path = getenv("CONFIG_PATH") ?: "/etc/blackcat/config.runtime.json";
+          $raw = @file_get_contents($path);
+          if (!is_string($raw)) {
+            fwrite(STDERR, "[entrypoint] unable to read runtime config: {$path}\n");
+            exit(0);
+          }
+          try {
+            $cfg = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+          } catch (Throwable $e) {
+            fwrite(STDERR, "[entrypoint] runtime config is invalid JSON already: {$path}\n");
+            exit(0);
+          }
+          if (!is_array($cfg)) {
+            fwrite(STDERR, "[entrypoint] runtime config JSON is not an object/array: {$path}\n");
+            exit(0);
+          }
+          $cfg["_blackcat_testing_tamper"] = [
+            "at" => gmdate("c"),
+            "note" => "simulated runtime-config tamper",
+          ];
+          file_put_contents($path, json_encode($cfg, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) . "\n");
+        ' || true
+        ;;
       *)
         echo "[entrypoint] unknown TAMPER_KIND=${TAMPER_KIND}, skipping tamper" >&2
         ;;

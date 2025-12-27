@@ -39,7 +39,7 @@ attack_path_traversal() {
 }
 
 health_json() {
-  curl -fsS "${TARGET_BASE_URL}/health" | jq -c '{trusted_now:.trust.trusted_now,rpc_ok_now:.trust.rpc_ok_now,read_allowed:.trust.read_allowed,write_allowed:.trust.write_allowed,paused:.trust.paused,error_codes:.trust.error_codes}'
+  curl -fsS "${TARGET_BASE_URL}/health" | jq -c '{enforcement:.trust.enforcement,trusted_now:.trust.trusted_now,rpc_ok_now:.trust.rpc_ok_now,read_allowed:.trust.read_allowed,write_allowed:.trust.write_allowed,paused:.trust.paused,error_codes:.trust.error_codes}'
 }
 
 initial_health="$(health_json || echo '{}')"
@@ -59,13 +59,14 @@ while true; do
     break
   fi
 
-if (( tampered == 0 && elapsed >= TAMPER_AFTER_SEC )); then
+  if (( tampered == 0 && elapsed >= TAMPER_AFTER_SEC )); then
     tampered="1"
-    echo "[attacker] NOTE: this harness expects tamper + restart to be orchestrated by the host (docker exec)."
+    echo "[attacker] NOTE: filesystem/config tamper is expected to be performed by the app container (entrypoint.sh) based on BLACKCAT_TESTING_TAMPER_*."
     echo "[attacker] trusted_now_before_tamper=$(health_json || echo '?')"
   fi
 
   health="$(health_json || echo '{}')"
+  enforcement="$(echo "$health" | jq -r '.enforcement // "null"' || echo "null")"
   trusted_now="$(echo "$health" | jq -r '.trusted_now // "null"' || echo "null")"
   rpc_ok_now="$(echo "$health" | jq -r '.rpc_ok_now // "null"' || echo "null")"
   read_allowed="$(echo "$health" | jq -r '.read_allowed // "null"' || echo "null")"
@@ -82,13 +83,23 @@ if (( tampered == 0 && elapsed >= TAMPER_AFTER_SEC )); then
   attack_path_traversal
 
   if (( elapsed % 10 == 0 )); then
-    echo "[attacker] t=${elapsed}s health=${code_health} trusted_now=${trusted_now} rpc_ok_now=${rpc_ok_now} read_allowed=${read_allowed} write_allowed=${write_allowed} | db_read=${code_db_read} db_write=${code_db_write} bypass_pdo=${code_bypass_pdo}"
+    echo "[attacker] t=${elapsed}s health=${code_health} enforcement=${enforcement} trusted_now=${trusted_now} rpc_ok_now=${rpc_ok_now} read_allowed=${read_allowed} write_allowed=${write_allowed} | db_read=${code_db_read} db_write=${code_db_write} bypass_pdo=${code_bypass_pdo}"
   fi
 
-  if [[ "$trusted_now" == "true" ]]; then
-    if [[ "$code_bypass_pdo" == "200" ]]; then
-      echo "[attacker] FAIL: /bypass/pdo returned 200 while trusted (raw PDO bypass must be denied)" >&2
+  if [[ "$enforcement" == "strict" ]]; then
+    if [[ "$write_allowed" != "true" && "$code_db_write" == "200" ]]; then
+      echo "[attacker] FAIL: write_allowed=false but /db/write returned 200 (write must be denied in strict mode)" >&2
       exit 11
+    fi
+
+    if [[ "$read_allowed" != "true" && "$code_db_read" == "200" ]]; then
+      echo "[attacker] FAIL: read_allowed=false but /db/read returned 200 (read must be denied in strict mode)" >&2
+      exit 12
+    fi
+
+    if [[ "$read_allowed" == "true" && "$code_bypass_pdo" != "403" ]]; then
+      echo "[attacker] FAIL: /bypass/pdo must be denied (403) when requests are allowed (raw PDO bypass must never be allowed)" >&2
+      exit 13
     fi
   fi
 

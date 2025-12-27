@@ -1,0 +1,9 @@
+services:
+  app:
+    environment:
+      BLACKCAT_TESTING_TAMPER_KIND: "modify_config"
+
+  attacker:
+    environment:
+      EXPECT_TRUST_OK_AT_START: "1"
+      EXPECT_TRUST_FAIL_AFTER_TAMPER: "1"

@@ -40,8 +40,27 @@ docker compose \
   up --build --abort-on-container-exit attacker
 ```
 
+## C) Runtime config tamper (override)
+
+This simulates runtime-config tampering (editing `config.runtime.json` after boot).
+
+Override file:
+- `docker/minimal-prod/docker-compose.config-tamper.yml`
+
+Expected outcome:
+- after tamper: `trusted_now=false`, `read_allowed=false`, `write_allowed=false`
+- `error_codes` should include `runtime_config_source_changed` (or `runtime_config_source_invalid`)
+
+Run:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.config-tamper.yml \
+  up --build --abort-on-container-exit attacker
+```
+
 ## Notes
 
 - These scenarios require a correctly provisioned on-chain `InstanceController` (see `docs/EDGEN_MINIMAL_PROD_RUNBOOK.md`).
 - Increase `ATTACK_DURATION_SEC` to run longer (hours) once the setup is stable.
-

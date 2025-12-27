@@ -70,9 +70,11 @@ Record the created `InstanceController` address from the script output / transac
 
 ## Step 3: Compute runtime-config attestation for the real InstanceController
 
-Edit `blackcat-testing/docker/minimal-prod/docker-compose.yml`:
+Set your real controller address for the compose stack (no file edits needed):
 
-- Set `app.environment.BLACKCAT_INSTANCE_CONTROLLER` to the new instance address.
+```bash
+export BLACKCAT_INSTANCE_CONTROLLER=0x...
+```
 
 Then run compute again (now the canonical config hash will include the correct controller address):
 
@@ -130,9 +132,14 @@ The default compose config:
 
 Tune duration/attack rate/tamper knobs in `blackcat-testing/docker/minimal-prod/docker-compose.yml`.
 
+Recommended extra assertion (fails fast if provisioning is wrong):
+
+```bash
+export EXPECT_TRUST_OK_AT_START=1
+```
+
 ## Cleanup
 
 ```bash
 docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml down -v
 ```
-
