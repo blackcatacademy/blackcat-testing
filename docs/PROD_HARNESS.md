@@ -17,6 +17,7 @@ This is separate from unit tests inside individual repos. Those should stay in t
 ## Runbooks
 
 - Edgen (chain_id `4207`): `docs/EDGEN_MINIMAL_PROD_RUNBOOK.md`
+- Scenarios: `docs/SCENARIOS.md`
 
 ## Typical flow (high level)
 
