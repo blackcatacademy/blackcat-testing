@@ -4,6 +4,10 @@ set -eu
 BOOT_MODE="${BLACKCAT_TESTING_BOOT_MODE:-run}"
 FORCE_PROVISION="${BLACKCAT_TESTING_FORCE_PROVISION:-0}"
 EXIT_AFTER_TAMPER="${BLACKCAT_TESTING_EXIT_AFTER_TAMPER:-0}"
+LOCAL_RPC_PROXY="${BLACKCAT_TESTING_LOCAL_RPC_PROXY:-0}"
+RPC_PROXY_PORT="${BLACKCAT_TESTING_RPC_PROXY_PORT:-8545}"
+RPC_PROXY_UPSTREAM="${BLACKCAT_TESTING_RPC_PROXY_UPSTREAM:-}"
+RPC_PROXY_SABOTAGE_AFTER_SEC="${BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC:-0}"
 
 TAMPER_AFTER_SEC="${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
 TAMPER_KIND="${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
@@ -16,6 +20,7 @@ ROOT_DIR="/srv/blackcat"
 MANIFEST_PATH="/etc/blackcat/integrity.manifest.json"
 CONFIG_PATH="/etc/blackcat/config.runtime.json"
 TAMPER_MARKER="/etc/blackcat/.blackcat_testing_tamper_done"
+NO_REPROVISION_MARKER="/etc/blackcat/.blackcat_testing_disable_reprovision"
 
 CHAIN_ID="${BLACKCAT_TRUST_CHAIN_ID:-4207}"
 RPC_ENDPOINTS="${BLACKCAT_TRUST_RPC_ENDPOINTS:-https://rpc.layeredge.io}"
@@ -35,11 +40,13 @@ if [ -z "$INSTANCE_CONTROLLER" ]; then
 fi
 
 export ROOT_DIR MANIFEST_PATH CONFIG_PATH FORCE_PROVISION
+export NO_REPROVISION_MARKER
 export CHAIN_ID RPC_ENDPOINTS RPC_QUORUM MODE MAX_STALE_SEC TIMEOUT_SEC INSTANCE_CONTROLLER
 export DB_DSN DB_USER DB_PASS
 
 php -r '
   $force = getenv("FORCE_PROVISION") === "1";
+  $noReprovisionMarker = getenv("NO_REPROVISION_MARKER") ?: "";
   $rootDir = getenv("ROOT_DIR");
   $manifestPath = getenv("MANIFEST_PATH");
   $configPath = getenv("CONFIG_PATH");
@@ -75,11 +82,13 @@ php -r '
   ];
 
   $manifest = \BlackCat\Core\TrustKernel\IntegrityManifestBuilder::build($rootDir, null);
-  if ($force || !is_file($manifestPath)) {
-    file_put_contents($manifestPath, json_encode($manifest["manifest"], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) . "\n");
+  $noReprovision = !$force && is_string($noReprovisionMarker) && $noReprovisionMarker !== "" && file_exists($noReprovisionMarker);
+
+  if (!$noReprovision && ($force || !is_file($manifestPath))) {
+      file_put_contents($manifestPath, json_encode($manifest["manifest"], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) . "\n");
   }
 
-  if ($force || !is_file($configPath)) {
+  if (!$noReprovision && ($force || !is_file($configPath))) {
     file_put_contents($configPath, json_encode($cfg, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) . "\n");
   }
 
@@ -170,6 +179,77 @@ if [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then
           file_put_contents($path, json_encode($cfg, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) . "\n");
         ' || true
         ;;
+      swap_controller)
+        php -r '
+          $path = getenv("CONFIG_PATH") ?: "/etc/blackcat/config.runtime.json";
+          $raw = @file_get_contents($path);
+          if (!is_string($raw)) {
+            fwrite(STDERR, "[entrypoint] unable to read runtime config: {$path}\n");
+            exit(0);
+          }
+          try {
+            $cfg = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+          } catch (Throwable $e) {
+            fwrite(STDERR, "[entrypoint] runtime config is invalid JSON already: {$path}\n");
+            exit(0);
+          }
+          if (!is_array($cfg)) {
+            fwrite(STDERR, "[entrypoint] runtime config JSON is not an object/array: {$path}\n");
+            exit(0);
+          }
+          $cfg["trust"]["web3"]["contracts"]["instance_controller"] = "0x2222222222222222222222222222222222222222";
+          file_put_contents($path, json_encode($cfg, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) . "\n");
+        ' || true
+        ;;
+      corrupt_config)
+        printf '{broken_json' > "$CONFIG_PATH" || true
+        ;;
+      delete_config)
+        rm -f "$CONFIG_PATH" || true
+        echo "1" > "$NO_REPROVISION_MARKER" || true
+        chmod 0640 "$NO_REPROVISION_MARKER" || true
+        ;;
+      modify_manifest)
+        php -r '
+          $path = getenv("MANIFEST_PATH") ?: "/etc/blackcat/integrity.manifest.json";
+          $raw = @file_get_contents($path);
+          if (!is_string($raw)) {
+            fwrite(STDERR, "[entrypoint] unable to read integrity manifest: {$path}\n");
+            exit(0);
+          }
+          try {
+            $m = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+          } catch (Throwable $e) {
+            fwrite(STDERR, "[entrypoint] integrity manifest is invalid JSON already: {$path}\n");
+            exit(0);
+          }
+          if (!is_array($m) || !isset($m["files"]) || !is_array($m["files"]) || $m["files"] === []) {
+            fwrite(STDERR, "[entrypoint] integrity manifest has no files: {$path}\n");
+            exit(0);
+          }
+          $k = array_key_first($m["files"]);
+          if (!is_string($k)) {
+            exit(0);
+          }
+          $h = $m["files"][$k] ?? null;
+          if (is_string($h) && str_starts_with($h, "0x") && strlen($h) === 66) {
+            $last = substr($h, -1);
+            $flip = $last === "0" ? "1" : "0";
+            $m["files"][$k] = substr($h, 0, -1) . $flip;
+          } else {
+            $m["files"][$k] = "0x" . str_repeat("00", 32);
+          }
+          file_put_contents($path, json_encode($m, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) . "\n");
+        ' || true
+        ;;
+      corrupt_manifest)
+        printf '{broken_json' > "$MANIFEST_PATH" || true
+        ;;
+      delete_manifest)
+        rm -f "$MANIFEST_PATH" || true
+        echo "1" > "$NO_REPROVISION_MARKER" || true
+        chmod 0640 "$NO_REPROVISION_MARKER" || true
+        ;;
       *)
         echo "[entrypoint] unknown TAMPER_KIND=${TAMPER_KIND}, skipping tamper" >&2
         ;;
@@ -197,6 +277,20 @@ if [ "$RPC_SABOTAGE_AFTER_SEC" != "0" ] && [ "$RPC_SABOTAGE_AFTER_SEC" != "" ]; 
       echo "[entrypoint] /etc/hosts is not writable, cannot sabotage RPC" >&2
     fi
   ) &
+fi
+
+if [ "$LOCAL_RPC_PROXY" = "1" ]; then
+  if [ -z "$RPC_PROXY_UPSTREAM" ]; then
+    echo "[entrypoint] missing BLACKCAT_TESTING_RPC_PROXY_UPSTREAM" >&2
+    exit 2
+  fi
+
+  export BLACKCAT_TESTING_RPC_PROXY_UPSTREAM="$RPC_PROXY_UPSTREAM"
+  export BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC="$RPC_PROXY_SABOTAGE_AFTER_SEC"
+  export BLACKCAT_TESTING_RPC_PROXY_STARTED_AT="$(date +%s)"
+
+  echo "[entrypoint] starting local RPC proxy on 127.0.0.1:${RPC_PROXY_PORT} (upstream=${RPC_PROXY_UPSTREAM})" >&2
+  php -S "127.0.0.1:${RPC_PROXY_PORT}" -t /srv/blackcat/site/rpc-proxy >/dev/null 2>&1 &
 fi
 
 exec su -s /bin/sh -c "php -S 0.0.0.0:8080 -t /srv/blackcat/site/public" www-data

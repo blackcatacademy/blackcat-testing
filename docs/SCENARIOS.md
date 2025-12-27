@@ -84,6 +84,104 @@ docker compose \
   up --build --abort-on-container-exit attacker
 ```
 
+## E) Integrity manifest tamper + app restart (override)
+
+This simulates tampering with `integrity.manifest.json` and then restarting the runtime.
+
+Override file:
+- `docker/minimal-prod/docker-compose.manifest-tamper-restart.yml`
+
+Expected outcome:
+- after restart: `trusted_now=false` (integrity check fails)
+- `error_codes` should include `integrity_hash_mismatch` (or `integrity_check_failed`)
+
+Run:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.manifest-tamper-restart.yml \
+  up --build --abort-on-container-exit attacker
+```
+
+## F) Runtime config delete + app restart (override)
+
+This simulates an attacker deleting `config.runtime.json` and triggering a restart.
+
+Override file:
+- `docker/minimal-prod/docker-compose.config-delete-restart.yml`
+
+Expected outcome:
+- after restart: kernel bootstrap fails → `/health` becomes unavailable (503/000) (fail-closed)
+
+Run:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.config-delete-restart.yml \
+  up --build --abort-on-container-exit attacker
+```
+
+## G) Runtime config corrupt + app restart (override)
+
+This simulates runtime config corruption (invalid JSON) and a restart.
+
+Override file:
+- `docker/minimal-prod/docker-compose.config-corrupt-restart.yml`
+
+Expected outcome:
+- after restart: kernel bootstrap fails → `/health` becomes unavailable (503/000) (fail-closed)
+
+Run:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.config-corrupt-restart.yml \
+  up --build --abort-on-container-exit attacker
+```
+
+## H) Controller swap + app restart (override)
+
+This simulates an attacker trying to redirect trust to a different `InstanceController` by editing runtime config.
+
+Override file:
+- `docker/minimal-prod/docker-compose.controller-swap-restart.yml`
+
+Expected outcome:
+- after restart: policy v3 detects `runtime_config_commitment_mismatch` → fail-closed
+
+Run:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.controller-swap-restart.yml \
+  up --build --abort-on-container-exit attacker
+```
+
+## I) Byzantine RPC endpoint (quorum=2) (override)
+
+This simulates a “Byzantine” RPC: the second endpoint is a localhost proxy that initially forwards to the real RPC,
+then starts mutating JSON-RPC responses after `BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC`.
+
+Override file:
+- `docker/minimal-prod/docker-compose.byzantine-rpc.yml`
+
+Expected outcome:
+- before sabotage: `trusted_now=true`
+- after sabotage: `rpc_ok_now=false` (quorum not met), writes blocked, reads may stay allowed until `max_stale_sec`
+
+Run:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.byzantine-rpc.yml \
+  up --build --abort-on-container-exit attacker
+```
+
 ## Notes
 
 - These scenarios require a correctly provisioned on-chain `InstanceController` (see `docs/EDGEN_MINIMAL_PROD_RUNBOOK.md`).

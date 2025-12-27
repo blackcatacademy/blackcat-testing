@@ -8,6 +8,7 @@ TAMPER_AFTER_SEC="${TAMPER_AFTER_SEC:-40}"
 EXPECT_TRUST_FAIL_AFTER_TAMPER="${EXPECT_TRUST_FAIL_AFTER_TAMPER:-1}"
 EXPECT_STALE_READS_ON_RPC_OUTAGE="${EXPECT_STALE_READS_ON_RPC_OUTAGE:-0}"
 EXPECT_TRUST_OK_AT_START="${EXPECT_TRUST_OK_AT_START:-0}"
+EXPECT_HEALTH_DOWN_AFTER_TAMPER="${EXPECT_HEALTH_DOWN_AFTER_TAMPER:-0}"
 ATTACK_LOG_DIR="${ATTACK_LOG_DIR:-/var/log/blackcat-testing}"
 ATTACK_LOG_EVERY_SEC="${ATTACK_LOG_EVERY_SEC:-1}"
 ATTACK_READY_TIMEOUT_SEC="${ATTACK_READY_TIMEOUT_SEC:-60}"
@@ -15,6 +16,7 @@ ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS="${ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS:-30}"
 
 echo "[attacker] target=${TARGET_BASE_URL}"
 echo "[attacker] duration_sec=${ATTACK_DURATION_SEC} rps=${ATTACK_RPS} tamper_after_sec=${TAMPER_AFTER_SEC} expect_trust_fail_after_tamper=${EXPECT_TRUST_FAIL_AFTER_TAMPER} expect_stale_reads_on_rpc_outage=${EXPECT_STALE_READS_ON_RPC_OUTAGE}"
+echo "[attacker] expect_health_down_after_tamper=${EXPECT_HEALTH_DOWN_AFTER_TAMPER}"
 echo "[attacker] log_dir=${ATTACK_LOG_DIR} log_every_sec=${ATTACK_LOG_EVERY_SEC} ready_timeout_sec=${ATTACK_READY_TIMEOUT_SEC} max_consecutive_health_fails=${ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS}"
 
 start_ts="$(date +%s)"
@@ -37,6 +39,7 @@ jq -n \
   --arg expect_trust_ok_at_start "${EXPECT_TRUST_OK_AT_START}" \
   --arg expect_trust_fail_after_tamper "${EXPECT_TRUST_FAIL_AFTER_TAMPER}" \
   --arg expect_stale_reads_on_rpc_outage "${EXPECT_STALE_READS_ON_RPC_OUTAGE}" \
+  --arg expect_health_down_after_tamper "${EXPECT_HEALTH_DOWN_AFTER_TAMPER}" \
   '{
     run_id:$run_id,
     started_at:$started_at,
@@ -47,7 +50,8 @@ jq -n \
     expectations:{
       trust_ok_at_start:($expect_trust_ok_at_start|tonumber == 1),
       trust_fail_after_tamper:($expect_trust_fail_after_tamper|tonumber == 1),
-      stale_reads_on_rpc_outage:($expect_stale_reads_on_rpc_outage|tonumber == 1)
+      stale_reads_on_rpc_outage:($expect_stale_reads_on_rpc_outage|tonumber == 1),
+      health_down_after_tamper:($expect_health_down_after_tamper|tonumber == 1)
     }
   }' > "${meta_file}"
 
@@ -180,9 +184,13 @@ while true; do
 
   if [[ "${code_health}" != "200" ]]; then
     consecutive_health_fails="$((consecutive_health_fails + 1))"
-    if (( consecutive_health_fails >= ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS )); then
-      echo "[attacker] FAIL: /health unavailable for too long (consecutive=${consecutive_health_fails}, last_code=${code_health})" >&2
-      exit 20
+    if (( EXPECT_HEALTH_DOWN_AFTER_TAMPER == 1 && elapsed > (TAMPER_AFTER_SEC + 15) )); then
+      true
+    else
+      if (( consecutive_health_fails >= ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS )); then
+        echo "[attacker] FAIL: /health unavailable for too long (consecutive=${consecutive_health_fails}, last_code=${code_health})" >&2
+        exit 20
+      fi
     fi
   else
     consecutive_health_fails="0"
@@ -209,6 +217,13 @@ while true; do
     if [[ "$trusted_now" == "true" ]]; then
       echo "[attacker] FAIL: expected trust to fail after tamper window but trusted_now=true" >&2
       exit 2
+    fi
+  fi
+
+  if (( EXPECT_HEALTH_DOWN_AFTER_TAMPER == 1 && elapsed > (TAMPER_AFTER_SEC + 15) )); then
+    if [[ "${code_health}" == "200" ]]; then
+      echo "[attacker] FAIL: expected /health to be unavailable after tamper+restart but got 200" >&2
+      exit 21
     fi
   fi
 

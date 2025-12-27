@@ -1,0 +1,14 @@
+services:
+  app:
+    restart: always
+    environment:
+      BLACKCAT_TESTING_FORCE_PROVISION: "0"
+      BLACKCAT_TESTING_TAMPER_KIND: "corrupt_config"
+      BLACKCAT_TESTING_EXIT_AFTER_TAMPER: "1"
+
+  attacker:
+    environment:
+      ATTACK_DURATION_SEC: "180"
+      EXPECT_TRUST_OK_AT_START: "1"
+      EXPECT_TRUST_FAIL_AFTER_TAMPER: "1"
+      EXPECT_HEALTH_DOWN_AFTER_TAMPER: "1"
