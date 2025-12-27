@@ -132,6 +132,15 @@ The default compose config:
 
 Tune duration/attack rate/tamper knobs in `blackcat-testing/docker/minimal-prod/docker-compose.yml`.
 
+For a **soak** run (hours, no tamper by default), add:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.soak.yml \
+  up --build --abort-on-container-exit attacker
+```
+
 Recommended extra assertion (fails fast if provisioning is wrong):
 
 ```bash

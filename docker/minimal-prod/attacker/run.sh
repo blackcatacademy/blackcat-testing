@@ -152,7 +152,7 @@ while true; do
     break
   fi
 
-  if (( tampered == 0 && elapsed >= TAMPER_AFTER_SEC )); then
+  if (( TAMPER_AFTER_SEC > 0 && tampered == 0 && elapsed >= TAMPER_AFTER_SEC )); then
     tampered="1"
     echo "[attacker] NOTE: filesystem/config tamper is expected to be performed by the app container (entrypoint.sh) based on BLACKCAT_TESTING_TAMPER_*."
     fetch_health

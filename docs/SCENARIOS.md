@@ -182,6 +182,26 @@ docker compose \
   up --build --abort-on-container-exit attacker
 ```
 
+## J) Soak (baseline, no tamper) (override)
+
+This is a long-running stability/performance run with **no tamper** by default.
+
+Override file:
+- `docker/minimal-prod/docker-compose.soak.yml`
+
+Expected outcome:
+- `trusted_now=true` for the full run (no fail-closed trigger)
+- `/health` stays available
+
+Run:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.soak.yml \
+  up --build --abort-on-container-exit attacker
+```
+
 ## Notes
 
 - These scenarios require a correctly provisioned on-chain `InstanceController` (see `docs/EDGEN_MINIMAL_PROD_RUNBOOK.md`).

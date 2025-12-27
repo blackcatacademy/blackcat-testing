@@ -1,0 +1,14 @@
+services:
+  app:
+    environment:
+      # Soak = stability/performance run (no tamper by default).
+      BLACKCAT_TESTING_FORCE_PROVISION: "${BLACKCAT_TESTING_FORCE_PROVISION:-0}"
+      BLACKCAT_TESTING_TAMPER_AFTER_SEC: "${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
+
+  attacker:
+    environment:
+      # Default to hours; override with ATTACK_DURATION_SEC=...
+      ATTACK_DURATION_SEC: "${ATTACK_DURATION_SEC:-21600}"
+      ATTACK_RPS: "${ATTACK_RPS:-2}"
+      EXPECT_TRUST_OK_AT_START: "${EXPECT_TRUST_OK_AT_START:-1}"
+      EXPECT_TRUST_FAIL_AFTER_TAMPER: "${EXPECT_TRUST_FAIL_AFTER_TAMPER:-0}"
