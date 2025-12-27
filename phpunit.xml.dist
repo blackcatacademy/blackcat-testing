@@ -14,5 +14,8 @@
     <testsuite name="live">
       <directory>tests/Live</directory>
     </testsuite>
+    <testsuite name="workspace">
+      <directory>tests/WorkspaceSecurity</directory>
+    </testsuite>
   </testsuites>
 </phpunit>
