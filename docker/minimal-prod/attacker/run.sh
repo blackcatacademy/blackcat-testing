@@ -13,11 +13,14 @@ ATTACK_LOG_DIR="${ATTACK_LOG_DIR:-/var/log/blackcat-testing}"
 ATTACK_LOG_EVERY_SEC="${ATTACK_LOG_EVERY_SEC:-1}"
 ATTACK_READY_TIMEOUT_SEC="${ATTACK_READY_TIMEOUT_SEC:-60}"
 ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS="${ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS:-30}"
+ATTACK_HEALTH_TIMEOUT_SEC="${ATTACK_HEALTH_TIMEOUT_SEC:-20}"
+ATTACK_HTTP_TIMEOUT_SEC="${ATTACK_HTTP_TIMEOUT_SEC:-5}"
 
 echo "[attacker] target=${TARGET_BASE_URL}"
 echo "[attacker] duration_sec=${ATTACK_DURATION_SEC} rps=${ATTACK_RPS} tamper_after_sec=${TAMPER_AFTER_SEC} expect_trust_fail_after_tamper=${EXPECT_TRUST_FAIL_AFTER_TAMPER} expect_stale_reads_on_rpc_outage=${EXPECT_STALE_READS_ON_RPC_OUTAGE}"
 echo "[attacker] expect_health_down_after_tamper=${EXPECT_HEALTH_DOWN_AFTER_TAMPER}"
 echo "[attacker] log_dir=${ATTACK_LOG_DIR} log_every_sec=${ATTACK_LOG_EVERY_SEC} ready_timeout_sec=${ATTACK_READY_TIMEOUT_SEC} max_consecutive_health_fails=${ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS}"
+echo "[attacker] timeouts: health=${ATTACK_HEALTH_TIMEOUT_SEC}s other_http=${ATTACK_HTTP_TIMEOUT_SEC}s"
 
 start_ts="$(date +%s)"
 tampered="0"
@@ -59,8 +62,12 @@ req_code() {
   local method="$1"
   local path="$2"
   local url="${TARGET_BASE_URL}${path}"
+  local timeout="${ATTACK_HTTP_TIMEOUT_SEC}"
+  if [[ "${path}" == "/health" ]]; then
+    timeout="${ATTACK_HEALTH_TIMEOUT_SEC}"
+  fi
 
-  curl -sS -o /dev/null -w "%{http_code}" -X "$method" "$url" || echo "000"
+  curl -sS -m "${timeout}" -o /dev/null -w "%{http_code}" -X "$method" "$url" || echo "000"
 }
 
 attack_invalid_methods() {
@@ -78,7 +85,7 @@ attack_path_traversal() {
 fetch_health() {
   local url="${TARGET_BASE_URL}/health"
   local out
-  out="$(curl -sS -m 5 -w '\n%{http_code}' "$url" || true)"
+  out="$(curl -sS -m "${ATTACK_HEALTH_TIMEOUT_SEC}" -w '\n%{http_code}' "$url" || true)"
   HEALTH_CODE="$(printf '%s' "$out" | tail -n 1 | tr -d '\r')"
   HEALTH_BODY="$(printf '%s' "$out" | sed '$d')"
 }
