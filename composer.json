@@ -1,0 +1,54 @@
+{
+  "name": "blackcatacademy/blackcat-testing",
+  "description": "Production-like integration and attack-flow tests for the BlackCat kernel stack (core + config + contracts).",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": "^8.3",
+    "ext-json": "*",
+    "blackcatacademy/blackcat-core": "*",
+    "blackcatacademy/blackcat-config": "*"
+  },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../blackcat-core",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "../blackcat-config",
+      "options": {
+        "symlink": true
+      }
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "BlackCat\\Testing\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "BlackCat\\Testing\\Tests\\": "tests/"
+    }
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^1.11",
+    "phpstan/phpstan-phpunit": "^1.4",
+    "phpunit/phpunit": "^11.0"
+  },
+  "scripts": {
+    "test": "vendor/bin/phpunit --colors=always",
+    "test-live": "vendor/bin/phpunit --colors=always --testsuite live",
+    "stan": "vendor/bin/phpstan analyse --memory-limit=512M"
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "sort-packages": true
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}

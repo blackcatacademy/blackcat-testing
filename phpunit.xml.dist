@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+  bootstrap="vendor/autoload.php"
+  colors="true"
+  failOnRisky="true"
+  failOnWarning="true"
+  executionOrder="random"
+  defaultTestSuite="offline"
+>
+  <testsuites>
+    <testsuite name="offline">
+      <directory>tests/AttackFlows</directory>
+    </testsuite>
+    <testsuite name="live">
+      <directory>tests/Live</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>
