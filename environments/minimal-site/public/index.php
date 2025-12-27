@@ -10,7 +10,7 @@ use BlackCat\Core\Kernel\HttpKernelOptions;
 use BlackCat\Core\Kernel\HttpKernelResponse;
 use BlackCat\Core\TrustKernel\TrustKernelException;
 
-require __DIR__ . '/../../../vendor/autoload.php';
+require __DIR__ . '/../../vendor/autoload.php';
 
 $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
 $path = parse_url((string) $requestUri, PHP_URL_PATH);
