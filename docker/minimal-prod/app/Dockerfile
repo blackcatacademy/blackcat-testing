@@ -5,7 +5,10 @@ WORKDIR /workspace
 # Path repositories referenced by blackcat-testing/composer.json
 COPY blackcat-core/ /workspace/blackcat-core/
 COPY blackcat-config/ /workspace/blackcat-config/
-COPY blackcat-testing/ /workspace/blackcat-testing/
+
+# Keep composer install cache stable: copy only what affects dependencies/autoload.
+COPY blackcat-testing/composer.json blackcat-testing/composer.lock /workspace/blackcat-testing/
+COPY blackcat-testing/src/ /workspace/blackcat-testing/src/
 
 WORKDIR /workspace/blackcat-testing
 RUN COMPOSER_MIRROR_PATH_REPOS=1 composer install --no-dev --no-interaction --no-progress --optimize-autoloader
@@ -20,7 +23,7 @@ RUN set -eux; \
 WORKDIR /srv/blackcat
 
 COPY --from=builder /workspace/blackcat-testing/vendor/ /srv/blackcat/vendor/
-COPY --from=builder /workspace/blackcat-testing/environments/minimal-site/ /srv/blackcat/site/
+COPY blackcat-testing/environments/minimal-site/ /srv/blackcat/site/
 COPY --from=builder /workspace/blackcat-core/ /srv/blackcat-core/
 COPY --from=builder /workspace/blackcat-config/ /srv/blackcat-config/
 
