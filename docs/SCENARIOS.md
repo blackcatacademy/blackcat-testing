@@ -60,6 +60,30 @@ docker compose \
   up --build --abort-on-container-exit attacker
 ```
 
+## D) Runtime config tamper + app restart (override)
+
+This simulates a timed attacker flow:
+
+1) tamper `config.runtime.json`
+2) force a runtime restart (to try to load the tampered config)
+
+Override file:
+- `docker/minimal-prod/docker-compose.config-tamper-restart.yml`
+
+Expected outcome:
+- after restart: TrustKernel still fails closed (policy v3 will mismatch on-chain commitment)
+- `trusted_now=false`, `read_allowed=false`, `write_allowed=false`
+- `error_codes` should include `runtime_config_commitment_mismatch` (and/or `runtime_config_source_changed`)
+
+Run:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.config-tamper-restart.yml \
+  up --build --abort-on-container-exit attacker
+```
+
 ## Notes
 
 - These scenarios require a correctly provisioned on-chain `InstanceController` (see `docs/EDGEN_MINIMAL_PROD_RUNBOOK.md`).

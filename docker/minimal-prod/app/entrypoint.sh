@@ -3,6 +3,7 @@ set -eu
 
 BOOT_MODE="${BLACKCAT_TESTING_BOOT_MODE:-run}"
 FORCE_PROVISION="${BLACKCAT_TESTING_FORCE_PROVISION:-0}"
+EXIT_AFTER_TAMPER="${BLACKCAT_TESTING_EXIT_AFTER_TAMPER:-0}"
 
 TAMPER_AFTER_SEC="${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
 TAMPER_KIND="${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
@@ -14,6 +15,7 @@ chmod 0750 /etc/blackcat || true
 ROOT_DIR="/srv/blackcat"
 MANIFEST_PATH="/etc/blackcat/integrity.manifest.json"
 CONFIG_PATH="/etc/blackcat/config.runtime.json"
+TAMPER_MARKER="/etc/blackcat/.blackcat_testing_tamper_done"
 
 CHAIN_ID="${BLACKCAT_TRUST_CHAIN_ID:-4207}"
 RPC_ENDPOINTS="${BLACKCAT_TRUST_RPC_ENDPOINTS:-https://rpc.layeredge.io}"
@@ -126,6 +128,11 @@ if [ "$BOOT_MODE" = "compute" ]; then
   exit 0
 fi
 
+if [ -f "$TAMPER_MARKER" ]; then
+  echo "[entrypoint] tamper marker exists, disabling tamper scheduling: ${TAMPER_MARKER}" >&2
+  TAMPER_AFTER_SEC="0"
+fi
+
 if [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then
   (
     sleep "$TAMPER_AFTER_SEC" || exit 0
@@ -167,6 +174,16 @@ if [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then
         echo "[entrypoint] unknown TAMPER_KIND=${TAMPER_KIND}, skipping tamper" >&2
         ;;
     esac
+
+    echo "tampered $(date -u +%FT%TZ) kind=${TAMPER_KIND}" > "$TAMPER_MARKER" || true
+    chmod 0640 "$TAMPER_MARKER" || true
+
+    if [ "$EXIT_AFTER_TAMPER" = "1" ]; then
+      echo "[entrypoint] exit-after-tamper enabled; stopping container to simulate reboot/restart" >&2
+      kill -TERM 1 || true
+      sleep 2 || true
+      kill -KILL 1 || true
+    fi
   ) &
 fi
 
