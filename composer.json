@@ -14,14 +14,14 @@
       "type": "path",
       "url": "../blackcat-core",
       "options": {
-        "symlink": true
+        "symlink": false
       }
     },
     {
       "type": "path",
       "url": "../blackcat-config",
       "options": {
-        "symlink": true
+        "symlink": false
       }
     }
   ],
