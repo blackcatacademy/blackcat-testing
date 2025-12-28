@@ -4,6 +4,10 @@ services:
       BLACKCAT_TESTING_TAMPER_AFTER_SEC: "0"
       BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC: "30"
 
+  runner:
+    environment:
+      BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC: "30"
+
   attacker:
     environment:
       ATTACK_DURATION_SEC: "120"
@@ -11,4 +15,3 @@ services:
       EXPECT_TRUST_OK_AT_START: "1"
       EXPECT_TRUST_FAIL_AFTER_TAMPER: "0"
       EXPECT_STALE_READS_ON_RPC_OUTAGE: "1"
-

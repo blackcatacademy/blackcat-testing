@@ -137,6 +137,33 @@ if [ "$BOOT_MODE" = "compute" ]; then
   exit 0
 fi
 
+# Provision a minimal schema so read-only endpoints can function during stale-read mode.
+# In real deployments schema/migrations are handled out-of-band; this is only for blackcat-testing.
+if [ "${BLACKCAT_TESTING_PROVISION_DB_SCHEMA:-1}" = "1" ]; then
+  if [ -n "$DB_DSN" ]; then
+    php -r '
+      $dsn = (string) getenv("DB_DSN");
+      $user = getenv("DB_USER");
+      $pass = getenv("DB_PASS");
+      if ($dsn === "") {
+        exit(0);
+      }
+      $pdo = new PDO($dsn, is_string($user) ? $user : null, is_string($pass) ? $pass : null, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_EMULATE_PREPARES => false,
+      ]);
+      $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS bc_test_events (\n"
+        . "  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n"
+        . "  msg VARCHAR(255) NOT NULL,\n"
+        . "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+        . "  PRIMARY KEY (id)\n"
+        . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+      );
+    ' || true
+  fi
+fi
+
 if [ -f "$TAMPER_MARKER" ]; then
   echo "[entrypoint] tamper marker exists, disabling tamper scheduling: ${TAMPER_MARKER}" >&2
   TAMPER_AFTER_SEC="0"

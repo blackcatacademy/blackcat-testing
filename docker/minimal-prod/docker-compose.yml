@@ -41,6 +41,19 @@ services:
       db:
         condition: service_healthy
 
+  runner:
+    image: minimal-prod-app
+    entrypoint: ["php", "/srv/blackcat/site/bin/trust-runner.php"]
+    environment:
+      BLACKCAT_TRUST_RUNNER_INTERVAL_SEC: "${BLACKCAT_TRUST_RUNNER_INTERVAL_SEC:-5}"
+      BLACKCAT_TRUST_RUNNER_LOG_EVERY_SEC: "${BLACKCAT_TRUST_RUNNER_LOG_EVERY_SEC:-30}"
+      BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC: "${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
+    volumes:
+      - blackcat_etc:/etc/blackcat
+    depends_on:
+      app:
+        condition: service_started
+
   attacker:
     build:
       context: ../../..

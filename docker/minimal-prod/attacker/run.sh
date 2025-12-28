@@ -92,7 +92,7 @@ fetch_health() {
 
 health_compact() {
   if [[ "${HEALTH_CODE}" == "200" ]]; then
-    echo "${HEALTH_BODY}" | jq -c '{ok:true,http_code:200,enforcement:(.trust.enforcement//null),trusted_now:(.trust.trusted_now//null),rpc_ok_now:(.trust.rpc_ok_now//null),read_allowed:(.trust.read_allowed//null),write_allowed:(.trust.write_allowed//null),paused:(.trust.paused//null),error_codes:(.trust.error_codes//[])}' 2>/dev/null \
+    echo "${HEALTH_BODY}" | jq -c '{ok:true,http_code:200,enforcement:.trust.enforcement,trusted_now:.trust.trusted_now,rpc_ok_now:.trust.rpc_ok_now,read_allowed:.trust.read_allowed,write_allowed:.trust.write_allowed,paused:.trust.paused,checked_at:.trust.checked_at,last_ok_at:.trust.last_ok_at,error_codes:(.trust.error_codes//[])}' 2>/dev/null \
       || jq -nc --arg code "${HEALTH_CODE}" '{ok:false,http_code:($code|tonumber? // 0),parse_error:true}'
     return
   fi
@@ -126,7 +126,7 @@ wait_for_ready() {
     local compact
     compact="$(health_compact || echo '{}')"
     if [[ "${expect_trust_ok}" == "1" ]]; then
-      if [[ "$(echo "$compact" | jq -r '.trusted_now // "null"' || echo "null")" == "true" ]]; then
+      if [[ "$(echo "$compact" | jq -r '.trusted_now' || echo "null")" == "true" ]]; then
         echo "[attacker] ready: trusted_now=true"
         return 0
       fi
@@ -146,7 +146,7 @@ initial_health="$(health_compact || echo '{}')"
 echo "[attacker] initial health=${initial_health}"
 
 if (( EXPECT_TRUST_OK_AT_START == 1 )); then
-  if [[ "$(echo "$initial_health" | jq -r '.trusted_now // "null"' || echo "null")" != "true" ]]; then
+  if [[ "$(echo "$initial_health" | jq -r '.trusted_now' || echo "null")" != "true" ]]; then
     echo "[attacker] FAIL: expected trusted_now=true at start (chain/config not provisioned?)" >&2
     exit 10
   fi
@@ -170,10 +170,10 @@ while true; do
   health="$(health_compact || echo '{}')"
   ok="$(echo "$health" | jq -r '.ok // false' 2>/dev/null || echo "false")"
   enforcement="$(echo "$health" | jq -r '.enforcement // "null"' 2>/dev/null || echo "null")"
-  trusted_now="$(echo "$health" | jq -r '.trusted_now // "null"' 2>/dev/null || echo "null")"
-  rpc_ok_now="$(echo "$health" | jq -r '.rpc_ok_now // "null"' 2>/dev/null || echo "null")"
-  read_allowed="$(echo "$health" | jq -r '.read_allowed // "null"' 2>/dev/null || echo "null")"
-  write_allowed="$(echo "$health" | jq -r '.write_allowed // "null"' 2>/dev/null || echo "null")"
+  trusted_now="$(echo "$health" | jq -r '.trusted_now' 2>/dev/null || echo "null")"
+  rpc_ok_now="$(echo "$health" | jq -r '.rpc_ok_now' 2>/dev/null || echo "null")"
+  read_allowed="$(echo "$health" | jq -r '.read_allowed' 2>/dev/null || echo "null")"
+  write_allowed="$(echo "$health" | jq -r '.write_allowed' 2>/dev/null || echo "null")"
 
   # Normal traffic
   code_health="$(req_code GET /health)"
@@ -205,13 +205,25 @@ while true; do
 
   if [[ "$enforcement" == "strict" && "${ok}" == "true" ]]; then
     if [[ "$write_allowed" != "true" && "$code_db_write" == "200" ]]; then
-      echo "[attacker] FAIL: write_allowed=false but /db/write returned 200 (write must be denied in strict mode)" >&2
-      exit 11
+      fetch_health
+      health2="$(health_compact || echo '{}')"
+      write_allowed2="$(echo "$health2" | jq -r '.write_allowed' 2>/dev/null || echo "null")"
+
+      if [[ "$write_allowed2" != "true" ]]; then
+        echo "[attacker] FAIL: write_allowed=false but /db/write returned 200 (write must be denied in strict mode)" >&2
+        exit 11
+      fi
     fi
 
     if [[ "$read_allowed" != "true" && "$code_db_read" == "200" ]]; then
-      echo "[attacker] FAIL: read_allowed=false but /db/read returned 200 (read must be denied in strict mode)" >&2
-      exit 12
+      fetch_health
+      health2="$(health_compact || echo '{}')"
+      read_allowed2="$(echo "$health2" | jq -r '.read_allowed' 2>/dev/null || echo "null")"
+
+      if [[ "$read_allowed2" != "true" ]]; then
+        echo "[attacker] FAIL: read_allowed=false but /db/read returned 200 (read must be denied in strict mode)" >&2
+        exit 12
+      fi
     fi
 
     if [[ "$read_allowed" == "true" && "$code_bypass_pdo" != "403" ]]; then
@@ -219,12 +231,35 @@ while true; do
       # (e.g., right when a tamper event happens).
       fetch_health
       health2="$(health_compact || echo '{}')"
-      read_allowed2="$(echo "$health2" | jq -r '.read_allowed // "null"' 2>/dev/null || echo "null")"
-      trusted_now2="$(echo "$health2" | jq -r '.trusted_now // "null"' 2>/dev/null || echo "null")"
+      read_allowed2="$(echo "$health2" | jq -r '.read_allowed' 2>/dev/null || echo "null")"
+      trusted_now2="$(echo "$health2" | jq -r '.trusted_now' 2>/dev/null || echo "null")"
 
       if [[ "$read_allowed2" == "true" && "$trusted_now2" == "true" ]]; then
         echo "[attacker] FAIL: /bypass/pdo must be denied (403) when requests are allowed (raw PDO bypass must never be allowed). got=${code_bypass_pdo}" >&2
         exit 13
+      fi
+    fi
+  fi
+
+  if [[ "${ok}" == "true" ]]; then
+    if [[ "$read_allowed" == "true" && "$code_db_read" != "200" ]]; then
+      # Avoid false positives if trust flips between the health poll and the DB call.
+      fetch_health
+      health2="$(health_compact || echo '{}')"
+      read_allowed2="$(echo "$health2" | jq -r '.read_allowed' 2>/dev/null || echo "null")"
+      if [[ "$read_allowed2" == "true" ]]; then
+        echo "[attacker] FAIL: read_allowed=true but /db/read did not return 200 (got=${code_db_read})" >&2
+        exit 14
+      fi
+    fi
+
+    if [[ "$write_allowed" == "true" && "$code_db_write" != "200" ]]; then
+      fetch_health
+      health2="$(health_compact || echo '{}')"
+      write_allowed2="$(echo "$health2" | jq -r '.write_allowed' 2>/dev/null || echo "null")"
+      if [[ "$write_allowed2" == "true" ]]; then
+        echo "[attacker] FAIL: write_allowed=true but /db/write did not return 200 (got=${code_db_write})" >&2
+        exit 15
       fi
     fi
   fi

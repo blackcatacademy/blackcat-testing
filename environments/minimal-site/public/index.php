@@ -116,7 +116,6 @@ HttpKernel::run(
     if ($path === '/db/read') {
         try {
             $db = $ensureDb();
-            $initSchema($db);
             $row = $db->fetch('SELECT COUNT(*) AS c FROM bc_test_events');
             $count = is_array($row) ? (int) ($row['c'] ?? 0) : 0;
             $sendJson(200, ['count' => $count]);
