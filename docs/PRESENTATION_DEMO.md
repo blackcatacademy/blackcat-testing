@@ -87,6 +87,11 @@ The container writes `/etc/blackcat/demo.wallets.public.json` (addresses only). 
   - runtime-config commitment (policy v3)
 - If anything important diverges, the kernel fails closed and blocks sensitive operations.
 
+Compatibility note:
+- Some environments cannot run a proper secrets boundary (local agent / UNIX socket / multi-user isolation).
+  In those cases you still get integrity + fail-closed behavior, but you must treat “web RCE” as high risk for
+  secret exfiltration unless you add platform hardening (see `docs/HARDENING_RECOMMENDATIONS.md`).
+
 ## 2.1) Guided demo script (secure vs unprotected)
 
 1. Open the **unprotected** demo (`http://localhost:8089/`) and click:

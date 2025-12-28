@@ -2,6 +2,31 @@
 
 This repo is a *testing harness*, but the same ideas apply to real deployments of `blackcat-core` + `blackcat-config`.
 
+## Secrets boundary (recommended, but not always available)
+
+The **strongest** practical protection against “RCE → instant DB/key exfiltration” is to keep secrets *out of the web
+runtime*:
+- do not expose DB DSN/user/pass to the web process (env/config),
+- do not keep key material readable by the web process,
+- release secrets only through a privileged local agent that enforces TrustKernel (`read_allowed`/`write_allowed`).
+
+That is why the demo uses a root-owned **secrets-agent** over a UNIX socket.
+
+Why this is not mandatory everywhere:
+- Some platforms (shared hosting / locked-down PaaS / non-Linux) cannot run local agents, UNIX sockets, or multiple
+  processes/users safely.
+
+If you cannot run a secrets boundary:
+- You still benefit from TrustKernel (policy + integrity + fail-closed behavior) and from HTTP/ini hardening.
+- But you must assume: **if an attacker achieves arbitrary code execution in the web runtime, secrets in env/config can be stolen**.
+
+Mitigations for “compat” environments (best-effort):
+- keep DB on a separate host/private network (no public DB; allowlist only your app host),
+- least-privilege DB users (consider separate read-only vs write roles),
+- hardened PHP posture (disable dangerous functions, strict `open_basedir`, no URL fopen/include),
+- read-only app filesystem + restrict writable dirs,
+- remove/disable FTP immediately after deployment (treat it as a temporary installer transport).
+
 ## Filesystem isolation
 
 Recommended baseline:

@@ -3,6 +3,13 @@ services:
     read_only: true
     security_opt:
       - no-new-privileges:true
+    # The app container needs limited privileges during early boot (provisioning + dropping to www-data).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
     tmpfs:
       - /tmp
       - /var/tmp
@@ -14,6 +21,10 @@ services:
     read_only: true
     security_opt:
       - no-new-privileges:true
+    # Runner does not need root privileges.
+    user: "33:33" # www-data
+    cap_drop:
+      - ALL
     tmpfs:
       - /tmp
       - /var/tmp

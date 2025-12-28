@@ -56,6 +56,8 @@ Open:
 
 Presentation script:
 - `docs/PRESENTATION_DEMO.md`
+Hardening notes:
+- `docs/HARDENING_RECOMMENDATIONS.md`
 
 ### Optional: hardened filesystem mode
 
@@ -68,6 +70,15 @@ docker compose \
   -f docker/minimal-prod/docker-compose.hardened-fs.yml \
   up --build
 ```
+
+### Compatibility note (when secrets-agent is not possible)
+
+Some platforms cannot run a local secrets-agent boundary (UNIX sockets / multiple users/processes). The kernel still
+provides **policy + integrity + fail-closed**, but without a secrets boundary an RCE-class compromise may still exfiltrate
+any DB credentials or key material visible to the web runtime.
+
+Mitigations are documented in:
+- `docs/HARDENING_RECOMMENDATIONS.md`
 
 ## Test suites
 
