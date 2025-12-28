@@ -10,6 +10,10 @@ use BlackCat\Core\Kernel\HttpKernelContext;
 use BlackCat\Core\Kernel\HttpKernelOptions;
 use BlackCat\Core\Security\Crypto;
 use BlackCat\Core\TrustKernel\TrustKernelException;
+use BlackCat\Core\TrustKernel\BlackCatConfigRepositoryAdapter;
+use BlackCat\Core\TrustKernel\InstanceControllerReader;
+use BlackCat\Core\TrustKernel\Sha256Merkle;
+use BlackCat\Core\TrustKernel\TrustKernelConfig;
 use BlackCat\Core\TrustKernel\Web3RpcQuorumClient;
 
 require __DIR__ . '/../../vendor/autoload.php';
@@ -79,6 +83,7 @@ HttpKernel::run(
             'rpc_quorum' => null,
             'instance_controller' => null,
             'explorer_base_url' => null,
+            'insecure_demo_url' => getenv('BLACKCAT_TESTING_INSECURE_URL') ?: 'http://localhost:8089/',
             'demo' => [
                 'tamper_after_sec' => getenv('BLACKCAT_TESTING_TAMPER_AFTER_SEC') ?: null,
                 'tamper_kind' => getenv('BLACKCAT_TESTING_TAMPER_KIND') ?: null,
@@ -156,7 +161,7 @@ HttpKernel::run(
           summary{cursor:pointer;color:var(--muted);font-size:12px}
         </style></head><body>';
 
-        echo '<header><div class="wrap"><h1>BlackCat Kernel Demo</h1><p>Live status from <span class="k">/health</span> + guarded DB probes.</p></div></header>';
+        echo '<header><div class="wrap"><h1>BlackCat Kernel Demo</h1><p>Live status from <span class="k">/health</span> + guarded DB probes.</p><p class="muted" style="margin-top:8px"><a id="insecureLinkTop" href="#" target="_blank" rel="noopener">Open unprotected demo →</a></p></div></header>';
         echo '<div class="wrap"><div class="grid">';
 
         echo '<div class="card"><div class="row" style="justify-content:space-between">';
@@ -180,6 +185,14 @@ HttpKernel::run(
         echo '<p class="muted">Optional: mount <span class="k">/etc/blackcat/demo.wallets.public.json</span> (addresses only). Balances are read via JSON-RPC quorum (<span class="k">eth_getBalance</span>).</p>';
         echo '</div>';
 
+        echo '<div class="card"><div class="row" style="justify-content:space-between">';
+        echo '<div class="row"><span class="pill"><strong>On-chain upgrade info</strong></span><span class="pill">read-gated in strict mode</span></div>';
+        echo '<div class="row"><button id="btnRefreshUpgrade">Refresh</button></div>';
+        echo '</div>';
+        echo '<pre id="upgradeBox">{"loading":true}</pre>';
+        echo '<p class="muted">This block is intentionally unavailable when strict mode denies reads. Use it to copy values for Foundry scripts (publish release / set attestation / propose+activate upgrade).</p>';
+        echo '</div>';
+
         echo '<div class="card"><div class="row"><button id="btnRead">DB read</button><button id="btnWrite">DB write</button><button id="btnBypass">Probe PDO bypass</button><button id="btnTraffic">Start traffic</button><button id="btnClear">Clear log</button></div>';
         echo '<pre id="actionsLog">Ready.</pre>';
         echo '<p class="muted">Expected in strict mode: writes denied when <span class="k">write_allowed=false</span>, reads denied when <span class="k">read_allowed=false</span>, and the PDO bypass probe is always denied.</p>';
@@ -201,6 +214,8 @@ HttpKernel::run(
           const shortHex = (h) => typeof h === "string" && h.startsWith("0x") && h.length > 18 ? (h.slice(0, 10) + "…" + h.slice(-8)) : (h ?? "?");
 
           const meta = window.__BLACKCAT_META__ || {};
+          const insecureUrl = (typeof meta.insecure_demo_url === "string" && meta.insecure_demo_url) ? meta.insecure_demo_url : "http://localhost:8089/";
+          $("insecureLinkTop").href = insecureUrl;
           $("chainId").textContent = meta.chain_id ?? "?";
           $("rpcEndpointsCount").textContent = meta.rpc_endpoints_count ?? "?";
           $("rpcQuorum").textContent = meta.rpc_quorum ?? "?";
@@ -223,6 +238,8 @@ HttpKernel::run(
 		          let trafficTick = 0;
 	              let walletsInFlight = false;
 	              let lastWalletsAt = 0;
+                let upgradeInFlight = false;
+                let lastUpgradeAt = 0;
 
             function formatEdgenFromWeiHex(hexWei) {
               if (typeof hexWei !== "string" || !hexWei.startsWith("0x")) return "?";
@@ -269,6 +286,24 @@ HttpKernel::run(
                 $("tokenSymbol").textContent = "EDGEN";
               } finally {
                 walletsInFlight = false;
+              }
+            }
+
+            async function refreshUpgrade(force = false) {
+              const now = Date.now();
+              if (!force && upgradeInFlight) return;
+              if (!force && (now - lastUpgradeAt) < 5000) return;
+              upgradeInFlight = true;
+              lastUpgradeAt = now;
+
+              try {
+                const res = await fetch("/demo/upgrade-info", {cache:"no-store"});
+                const text = await res.text();
+                $("upgradeBox").textContent = text.trim() !== "" ? text : "{}";
+              } catch (e) {
+                $("upgradeBox").textContent = "[upgrade] fetch failed (expected when strict mode denies reads)";
+              } finally {
+                upgradeInFlight = false;
               }
             }
 
@@ -351,6 +386,7 @@ HttpKernel::run(
 	          $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
 	          $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
             $("btnRefreshWallets").addEventListener("click", () => refreshWallets(true));
+            $("btnRefreshUpgrade").addEventListener("click", () => refreshUpgrade(true));
 	          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
 
           $("btnTraffic").addEventListener("click", () => {
@@ -385,8 +421,10 @@ HttpKernel::run(
 
 	          refresh();
             refreshWallets(true);
+            refreshUpgrade(true);
 	          setInterval(refresh, 1000);
             setInterval(() => refreshWallets(false), 5000);
+            setInterval(() => refreshUpgrade(false), 10000);
 	        </script>';
 
         echo '</body></html>';
@@ -545,6 +583,94 @@ HttpKernel::run(
             'error' => $rpcError,
         ]);
         return;
+    }
+
+    if ($path === '/demo/upgrade-info') {
+        try {
+            $repo = Config::repo();
+            $tk = TrustKernelConfig::fromRuntimeConfig(new BlackCatConfigRepositoryAdapter($repo));
+            if ($tk === null) {
+                $sendJson(500, ['ok' => false, 'error' => 'trust.web3 not configured']);
+                return;
+            }
+
+            $manifestPath = $tk->integrityManifestPath;
+            $integrityRoot = null;
+            $integrityUriHash = null;
+            $filesCount = null;
+
+            if (is_file($manifestPath) && !is_link($manifestPath) && is_readable($manifestPath)) {
+                $raw = @file_get_contents($manifestPath);
+                if (is_string($raw) && trim($raw) !== '') {
+                    /** @var mixed $decoded */
+                    $decoded = json_decode($raw, true);
+                    if (is_array($decoded)) {
+                        $files = $decoded['files'] ?? null;
+                        if (is_array($files) && $files !== []) {
+                            $integrityRoot = Sha256Merkle::root($files);
+                            $filesCount = count($files);
+                        }
+                        $uri = $decoded['uri'] ?? null;
+                        if (is_string($uri) && trim($uri) !== '') {
+                            $integrityUriHash = \BlackCat\Core\TrustKernel\UriHasher::sha256Bytes32($uri);
+                        }
+                    }
+                }
+            }
+
+            $rpc = new Web3RpcQuorumClient($tk->rpcEndpoints, $tk->chainId, $tk->rpcQuorum, null, $tk->rpcTimeoutSec);
+            $ic = new InstanceControllerReader($rpc);
+
+            $controller = $tk->instanceController;
+            $componentId = $ic->expectedComponentId($controller);
+
+            $attV1Key = $tk->runtimeConfigAttestationKey;
+            $attV2Key = $tk->runtimeConfigAttestationKeyV2;
+            $attV1 = [
+                'key' => $attV1Key,
+                'value' => $ic->attestation($controller, $attV1Key),
+                'locked' => $ic->attestationLocked($controller, $attV1Key),
+                'updated_at' => $ic->attestationUpdatedAt($controller, $attV1Key),
+            ];
+            $attV2 = [
+                'key' => $attV2Key,
+                'value' => $ic->attestation($controller, $attV2Key),
+                'locked' => $ic->attestationLocked($controller, $attV2Key),
+                'updated_at' => $ic->attestationUpdatedAt($controller, $attV2Key),
+            ];
+
+            $payload = [
+                'ok' => true,
+                'controller' => $controller,
+                'component_id' => $componentId,
+                'local' => [
+                    'integrity_root' => $integrityRoot,
+                    'integrity_uri_hash' => $integrityUriHash,
+                    'files_count' => $filesCount,
+                    'policy_hash_v3_strict' => $tk->policyHashV3Strict,
+                    'policy_hash_v3_warn' => $tk->policyHashV3Warn,
+                    'policy_hash_v3_strict_v2' => $tk->policyHashV3StrictV2,
+                    'policy_hash_v3_warn_v2' => $tk->policyHashV3WarnV2,
+                    'runtime_config_value' => $tk->runtimeConfigCanonicalSha256,
+                    'attestation_key_v1' => $attV1Key,
+                    'attestation_key_v2' => $attV2Key,
+                ],
+                'on_chain' => [
+                    'attestation_v1' => $attV1,
+                    'attestation_v2' => $attV2,
+                ],
+                'notes' => [
+                    'To run a live upgrade demo, use blackcat-kernel-contracts Foundry scripts (publish release, set+lock attestation if needed, then propose+activate upgrade).',
+                    'Use policy_hash_v3_strict_v2 if the v1 attestation key is already locked and the runtime config changed.',
+                ],
+            ];
+
+            $sendJson(200, $payload);
+            return;
+        } catch (\Throwable $e) {
+            $sendJson(500, ['ok' => false, 'error' => $e->getMessage()]);
+            return;
+        }
     }
 
     if ($path === '/db/write') {

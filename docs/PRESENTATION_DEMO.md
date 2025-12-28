@@ -8,7 +8,10 @@ model in real time.
 From the `blackcatacademy` root:
 
 ```bash
-docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  up --build
 ```
 
 Optional hardened filesystem mode:
@@ -16,13 +19,15 @@ Optional hardened filesystem mode:
 ```bash
 docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.hardened-fs.yml \
   up --build
 ```
 
 Open:
-- Dashboard: `http://localhost:8088/`
-- Raw status: `http://localhost:8088/health`
+- Protected dashboard: `http://localhost:8088/`
+- Unprotected demo (control target): `http://localhost:8089/`
+- Raw status (protected): `http://localhost:8088/health`
 
 The dashboard shows:
 - `trusted_now`, `read_allowed`, `write_allowed`
@@ -110,11 +115,34 @@ runtime-config commitment matches the non-agent config:
 
 ```bash
 BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=0 \
-docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  up --build
 ```
+
+## 3.2) On-chain “audit + upgrade” demo (operator-driven)
+
+The protected dashboard includes a `On-chain upgrade info` panel (via `GET /demo/upgrade-info`) that prints:
+- `component_id`
+- the local `integrity_root` + policy hashes
+- the runtime-config attestation keys (v1 + v2) and their on-chain values/lock state
+
+Use it as a copy/paste source for Foundry scripts in `blackcat-kernel-contracts`.
+
+Recommended operator runbooks:
+- `blackcat-testing/docs/EDGEN_MINIMAL_PROD_RUNBOOK.md` (create a dedicated demo InstanceController)
+- `blackcat-testing/docs/EDGEN_EXISTING_INSTANCE_UPGRADE.md` (upgrade an existing InstanceController without new contracts)
+
+Security note:
+- Do **not** bake your main authority private key into any image.
+- For presentations, use a dedicated funded EOA and a dedicated demo InstanceController (treat it as public/dev).
 
 ## 4) Cleanup
 
 ```bash
-docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml down -v
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  down -v
 ```

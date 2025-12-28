@@ -1,0 +1,15 @@
+services:
+  insecure:
+    build:
+      context: ../../..
+      dockerfile: blackcat-testing/docker/minimal-prod/insecure/Dockerfile
+    environment:
+      DB_DSN: "${BLACKCAT_DB_DSN:-mysql:host=db;dbname=blackcat_test;charset=utf8mb4}"
+      DB_USER: "${BLACKCAT_DB_USER:-blackcat}"
+      DB_PASS: "${BLACKCAT_DB_PASS:-blackcat}"
+    ports:
+      - "127.0.0.1:8089:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+

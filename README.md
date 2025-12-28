@@ -20,10 +20,14 @@ docker run --rm -v "$PWD":/app -w /app composer:2.7 composer stan
 
 ## Demo dashboard (localhost)
 
-This repo ships a tiny demo site for partners to observe the kernel status in real time.
+This repo ships a tiny demo site for partners to observe the kernel status in real time, plus an intentionally
+unprotected “control” site to compare behavior without BlackCat protections.
 
 ```bash
-docker compose -f docker/minimal-prod/docker-compose.yml up --build
+docker compose \
+  -f docker/minimal-prod/docker-compose.yml \
+  -f docker/minimal-prod/docker-compose.demo.yml \
+  up --build
 ```
 
 Defaults (Edgen, strict):
@@ -31,8 +35,9 @@ Defaults (Edgen, strict):
 - Quorum: `2` (fail-closed if any endpoint disagrees or is down; stale reads may apply depending on policy)
 
 Open:
-- `http://localhost:8088/` (dashboard)
-- `http://localhost:8088/health` (raw JSON)
+- `http://localhost:8088/` (protected dashboard)
+- `http://localhost:8089/` (unprotected demo)
+- `http://localhost:8088/health` (protected raw JSON)
 
 Presentation script:
 - `docs/PRESENTATION_DEMO.md`
@@ -42,7 +47,11 @@ Presentation script:
 Runs the demo with a read-only container root filesystem and only `/etc/blackcat` + `/var/lib/blackcat` writable:
 
 ```bash
-docker compose -f docker/minimal-prod/docker-compose.yml -f docker/minimal-prod/docker-compose.hardened-fs.yml up --build
+docker compose \
+  -f docker/minimal-prod/docker-compose.yml \
+  -f docker/minimal-prod/docker-compose.demo.yml \
+  -f docker/minimal-prod/docker-compose.hardened-fs.yml \
+  up --build
 ```
 
 ## Test suites

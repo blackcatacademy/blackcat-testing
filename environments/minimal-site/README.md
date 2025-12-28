@@ -12,6 +12,7 @@ Endpoints (intentionally tiny):
 - `GET /health` — JSON status snapshot (sanitized, safe for monitoring).
 - `GET /health/debug` — extended JSON payload for local debugging (not for public monitoring).
 - `GET /demo/wallets` — optional demo wallet balances via JSON-RPC quorum (addresses only).
+- `GET /demo/upgrade-info` — operator-oriented JSON (integrity root/policy hashes + on-chain attestation slots) for live upgrade demos.
 - `POST /db/write` — tries a DB write via `BlackCat\Core\Database` wrapper.
 - `GET /db/read` — tries a DB read via `BlackCat\Core\Database` wrapper.
 - `GET /bypass/pdo` — attempts to access raw PDO (must be denied by TrustKernel guard).
