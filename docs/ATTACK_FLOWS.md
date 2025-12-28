@@ -24,3 +24,8 @@ This suite tries to model realistic attacker actions and infrastructure failures
 
 - Paused controller must hard-fail (no warn bypass).
 
+### Request entry gating
+
+- Every HTTP request enters via `BlackCat\Core\Kernel\HttpKernel` which boots the kernel and evaluates trust state.
+- `/health` is an observer endpoint (allowed even when reads are denied) and must remain read-only.
+- Trust evaluation is cached only within a single request (not across requests) to avoid stale-trust windows in long-lived workers.

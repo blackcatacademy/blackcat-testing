@@ -18,6 +18,18 @@ docker run --rm -v "$PWD":/app -w /app composer:2.7 composer test
 docker run --rm -v "$PWD":/app -w /app composer:2.7 composer stan
 ```
 
+## Demo dashboard (localhost)
+
+This repo ships a tiny demo site for partners to observe the kernel status in real time.
+
+```bash
+docker compose -f docker/minimal-prod/docker-compose.yml up --build
+```
+
+Open:
+- `http://localhost:8088/` (dashboard)
+- `http://localhost:8088/health` (raw JSON)
+
 ## Test suites
 
 - Offline (default): deterministic tests using a stub JSON-RPC transport (`tests/Support/StubWeb3Transport.php`).
@@ -27,3 +39,9 @@ docker run --rm -v "$PWD":/app -w /app composer:2.7 composer stan
 See:
 - `docs/ATTACK_FLOWS.md`
 - `docs/LIVE_CHAIN.md`
+
+## Note: `"symlink": false` vs symlink attack tests
+
+`composer.json` uses `path` repositories with `"symlink": false` so the installed code under test is a real copy
+(closer to production and friendlier for integrity verification). Separately, the test suite includes explicit
+symlink-based attack flows to ensure the kernel rejects symlink files/directories used for tampering or bypasses.

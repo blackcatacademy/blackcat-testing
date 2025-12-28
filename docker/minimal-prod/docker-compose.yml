@@ -34,7 +34,7 @@ services:
       BLACKCAT_TESTING_TAMPER_KIND: "${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
       BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC: "${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
     ports:
-      - "8088:8080"
+      - "127.0.0.1:8088:8080"
     volumes:
       - blackcat_etc:/etc/blackcat
     depends_on:
