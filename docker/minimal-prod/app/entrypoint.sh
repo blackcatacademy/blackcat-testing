@@ -140,9 +140,12 @@ php -r '
       "max_stale_sec" => $tk->maxStaleSec,
       "policy_hash_v3_strict" => $tk->policyHashV3Strict,
       "policy_hash_v3_warn" => $tk->policyHashV3Warn,
+      "policy_hash_v3_strict_v2" => $tk->policyHashV3StrictV2,
+      "policy_hash_v3_warn_v2" => $tk->policyHashV3WarnV2,
     ],
     "attestation" => [
       "runtime_config_key" => $attKey,
+      "runtime_config_key_v2" => $tk->runtimeConfigAttestationKeyV2,
       "runtime_config_value" => $attVal,
       "runtime_config_source_path" => $tk->runtimeConfigSourcePath,
     ],

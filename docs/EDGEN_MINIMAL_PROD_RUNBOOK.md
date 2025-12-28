@@ -96,6 +96,7 @@ docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml run --
 Copy:
 
 - `attestation.runtime_config_key`
+- `attestation.runtime_config_key_v2` (rotation key)
 - `attestation.runtime_config_value`
 
 ## Step 4: Set + lock the runtime-config attestation on-chain
@@ -126,6 +127,17 @@ At this point the chain is committed to:
 - the integrity root (genesis)
 - policy v3 strict (requires runtime-config commitment)
 - runtime-config commitment (attested + locked)
+
+### Policy v3 rotation (when v1 key is already locked)
+
+If your installation already locked `attestation.runtime_config_key` on-chain and you later change the runtime config
+schema (e.g. moving DB credentials into the secrets boundary), you must **rotate** the commitment key instead of trying
+to overwrite the locked key:
+
+- set+lock `attestation.runtime_config_key_v2` to the new `attestation.runtime_config_value`
+- upgrade the InstanceController `activePolicyHash` to `trust_policy.policy_hash_v3_strict_v2`
+
+This avoids creating a new InstanceController (no new contracts), while keeping the system fail-closed.
 
 ## Step 5: Run the long-running harness
 
