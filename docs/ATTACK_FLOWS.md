@@ -19,6 +19,7 @@ This suite tries to model realistic attacker actions and infrastructure failures
 
 - RPC outage after a previously-good state: allow **stale reads** for a short window (configured).
 - RPC outage + local tamper: stale reads must be denied (integrity recheck).
+- Strict mode requires `rpc_quorum >= 2` (and at least 2 endpoints) to reduce single-endpoint lies.
 
 ### Emergency stop
 

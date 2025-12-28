@@ -26,6 +26,10 @@ This is separate from unit tests inside individual repos. Those should stay in t
 3) Commit the upgrade + runtime-config attestation on-chain (InstanceController).
 4) Run long-running traffic + attack/tamper flows (hours, if needed).
 
+Default Edgen setup uses 2 RPC endpoints with quorum=2:
+- `https://rpc.layeredge.io`
+- `https://edgenscan.io/api/eth-rpc`
+
 ## Logs and reports
 
 The `attacker` container writes:

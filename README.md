@@ -26,9 +26,16 @@ This repo ships a tiny demo site for partners to observe the kernel status in re
 docker compose -f docker/minimal-prod/docker-compose.yml up --build
 ```
 
+Defaults (Edgen, strict):
+- RPC endpoints: `https://rpc.layeredge.io` + `https://edgenscan.io/api/eth-rpc`
+- Quorum: `2` (fail-closed if any endpoint disagrees or is down; stale reads may apply depending on policy)
+
 Open:
 - `http://localhost:8088/` (dashboard)
 - `http://localhost:8088/health` (raw JSON)
+
+Presentation script:
+- `docs/PRESENTATION_DEMO.md`
 
 ## Test suites
 

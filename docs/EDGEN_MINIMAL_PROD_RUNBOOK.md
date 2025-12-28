@@ -21,6 +21,12 @@ This harness spins up:
 
 3) You have a funded test EOA (or Safe / KernelAuthority) for broadcasting.
 
+4) Decide your RPC quorum config (strict recommended).
+   - Recommended endpoints: `https://rpc.layeredge.io` and `https://edgenscan.io/api/eth-rpc`
+   - Recommended quorum: `2`
+   - Note: `trust.web3.rpc_endpoints` and `trust.web3.rpc_quorum` are part of the runtime-config attestation and
+     become immutable once locked on-chain for a given installation.
+
 ## Step 1: Compute integrity root + policy hash (docker, local)
 
 From the `blackcatacademy` root:

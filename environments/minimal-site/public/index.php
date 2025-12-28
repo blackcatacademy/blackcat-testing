@@ -86,6 +86,57 @@ HttpKernel::run(
             header('Content-Type: text/html; charset=utf-8');
         }
 
+        $meta = [
+            'chain_id' => null,
+            'rpc_endpoints_count' => null,
+            'rpc_quorum' => null,
+            'instance_controller' => null,
+            'explorer_base_url' => null,
+            'demo' => [
+                'tamper_after_sec' => getenv('BLACKCAT_TESTING_TAMPER_AFTER_SEC') ?: null,
+                'tamper_kind' => getenv('BLACKCAT_TESTING_TAMPER_KIND') ?: null,
+                'rpc_sabotage_after_sec' => getenv('BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC') ?: null,
+                'rpc_proxy_sabotage_after_sec' => getenv('BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC') ?: null,
+            ],
+        ];
+
+        try {
+            $chainId = Config::get('trust.web3.chain_id');
+            if (is_int($chainId)) {
+                $meta['chain_id'] = $chainId;
+            } elseif (is_string($chainId) && ctype_digit(trim($chainId))) {
+                $meta['chain_id'] = (int) trim($chainId);
+            }
+
+            $endpoints = Config::get('trust.web3.rpc_endpoints');
+            if (is_array($endpoints)) {
+                $meta['rpc_endpoints_count'] = count($endpoints);
+            }
+
+            $quorum = Config::get('trust.web3.rpc_quorum');
+            if (is_int($quorum)) {
+                $meta['rpc_quorum'] = $quorum;
+            } elseif (is_string($quorum) && ctype_digit(trim($quorum))) {
+                $meta['rpc_quorum'] = (int) trim($quorum);
+            }
+
+            $controller = Config::get('trust.web3.contracts.instance_controller');
+            if (is_string($controller) && $controller !== '') {
+                $meta['instance_controller'] = $controller;
+            }
+
+            if ($meta['chain_id'] === 4207) {
+                $meta['explorer_base_url'] = 'https://edgenscan.io';
+            }
+        } catch (\Throwable) {
+            // best-effort only
+        }
+
+        $metaJson = json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!is_string($metaJson)) {
+            $metaJson = '{}';
+        }
+
         echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
         echo '<title>BlackCat Kernel Demo</title>';
         echo '<style>
@@ -112,31 +163,64 @@ HttpKernel::run(
           .k{font-family:var(--mono);font-size:12px;color:#cfe0ff}
           .statusDot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:var(--warn)}
           .dotOk{background:var(--ok)} .dotBad{background:var(--bad)} .dotWarn{background:var(--warn)}
+          a{color:#cfe0ff;text-decoration:none}
+          a:hover{text-decoration:underline}
+          details{margin-top:10px}
+          summary{cursor:pointer;color:var(--muted);font-size:12px}
         </style></head><body>';
 
         echo '<header><div class="wrap"><h1>BlackCat Kernel Demo</h1><p>Live status from <span class="k">/health</span> + guarded DB probes.</p></div></header>';
         echo '<div class="wrap"><div class="grid">';
 
         echo '<div class="card"><div class="row" style="justify-content:space-between">';
-        echo '<div class="row"><span id="dot" class="statusDot dotWarn"></span><span class="pill"><strong id="titleState">Loading…</strong></span><span class="pill">enforcement: <strong id="enf">?</strong></span><span class="pill">rpc: <strong id="rpc">?</strong></span></div>';
-        echo '<div class="row"><span class="pill">read: <strong id="read">?</strong></span><span class="pill">write: <strong id="write">?</strong></span><span class="pill">paused: <strong id="paused">?</strong></span></div>';
+        echo '<div class="row"><span id="dot" class="statusDot dotWarn"></span><span class="pill"><strong id="titleState">Loading…</strong></span><span class="pill">enforcement: <strong id="enf">?</strong></span><span class="pill">rpc: <strong id="rpc">?</strong></span><span class="pill">mode: <strong id="mode">?</strong></span></div>';
+        echo '<div class="row"><span class="pill">read: <strong id="read">?</strong></span><span class="pill">write: <strong id="write">?</strong></span><span class="pill">paused: <strong id="paused">?</strong></span><span class="pill">last_ok_age: <strong id="lastOkAge">?</strong></span></div>';
         echo '</div>';
-        echo '<pre id="healthRaw">{"loading":true}</pre>';
+        echo '<div class="row" style="margin-top:10px"><span class="pill">chain_id: <strong id="chainId">?</strong></span><span class="pill">rpc_endpoints: <strong id="rpcEndpointsCount">?</strong></span><span class="pill">rpc_quorum: <strong id="rpcQuorum">?</strong></span><span class="pill">controller: <a class="k" id="controllerLink" href="#" target="_blank" rel="noopener">?</a></span></div>';
+
+        echo '<div class="row" style="margin-top:10px"><span class="pill">active_root: <span class="k" id="activeRoot">?</span></span><span class="pill">policy_hash: <span class="k" id="activePolicy">?</span></span></div>';
+        echo '<pre id="errorsBox" style="display:none"></pre>';
+
+        echo '<details><summary>Raw /health JSON</summary><pre id="healthRaw">{"loading":true}</pre></details>';
         echo '<p class="muted">This page is intentionally allowed even when strict mode denies reads, so you can observe failures. It does not expose local filesystem details.</p>';
         echo '</div>';
 
-        echo '<div class="card"><div class="row"><button id="btnRead">DB read</button><button id="btnWrite">DB write</button><button id="btnBypass">Probe PDO bypass</button></div>';
+        echo '<div class="card"><div class="row"><button id="btnRead">DB read</button><button id="btnWrite">DB write</button><button id="btnBypass">Probe PDO bypass</button><button id="btnTraffic">Start traffic</button><button id="btnClear">Clear log</button></div>';
         echo '<pre id="actionsLog">Ready.</pre>';
-        echo '<p class="muted">Expected behaviour in strict mode: writes are denied when <span class="k">write_allowed=false</span>, reads are denied when <span class="k">read_allowed=false</span>, and the PDO bypass probe must always be denied.</p>';
+        echo '<p class="muted">Expected in strict mode: writes denied when <span class="k">write_allowed=false</span>, reads denied when <span class="k">read_allowed=false</span>, and the PDO bypass probe is always denied.</p>';
         echo '</div>';
 
         echo '</div></div>';
+
+        echo '<script>window.__BLACKCAT_META__=' . $metaJson . ';</script>';
 
         echo '<script>
           const $ = (id) => document.getElementById(id);
           const log = (msg) => { const el = $("actionsLog"); el.textContent = (new Date().toISOString()) + " " + msg + "\\n" + el.textContent; };
           const setBool = (id, v) => { $(id).textContent = v === true ? "true" : v === false ? "false" : "?"; };
           const setDot = (mode) => { const d = $("dot"); d.className = "statusDot " + (mode === "ok" ? "dotOk" : mode === "bad" ? "dotBad" : "dotWarn"); };
+          const shortHex = (h) => typeof h === "string" && h.startsWith("0x") && h.length > 18 ? (h.slice(0, 10) + "…" + h.slice(-8)) : (h ?? "?");
+
+          const meta = window.__BLACKCAT_META__ || {};
+          $("chainId").textContent = meta.chain_id ?? "?";
+          $("rpcEndpointsCount").textContent = meta.rpc_endpoints_count ?? "?";
+          $("rpcQuorum").textContent = meta.rpc_quorum ?? "?";
+          const controller = meta.instance_controller;
+          if (typeof controller === "string" && controller) {
+            const base = typeof meta.explorer_base_url === "string" && meta.explorer_base_url ? meta.explorer_base_url : "";
+            const url = base ? (base.replace(/\\/$/, "") + "/address/" + controller) : "#";
+            $("controllerLink").href = url;
+            $("controllerLink").textContent = shortHex(controller);
+          } else {
+            $("controllerLink").href = "#";
+            $("controllerLink").textContent = "?";
+          }
+
+          let lastTrusted = null;
+          let trafficTimer = null;
+          let trafficInFlight = false;
+          let trafficTick = 0;
+
           async function refresh() {
             try {
               const res = await fetch("/health", {cache:"no-store"});
@@ -145,13 +229,41 @@ HttpKernel::run(
               $("healthRaw").textContent = JSON.stringify(json, null, 2);
               if (!trust) { $("titleState").textContent = "No trust payload"; setDot("warn"); return; }
               $("enf").textContent = trust.enforcement ?? "?";
+              $("mode").textContent = trust.mode ?? "?";
               setBool("rpc", trust.rpc_ok_now);
               setBool("read", trust.read_allowed);
               setBool("write", trust.write_allowed);
               setBool("paused", trust.paused);
+              const checkedAt = typeof trust.checked_at === "number" ? trust.checked_at : null;
+              const lastOkAt = typeof trust.last_ok_at === "number" ? trust.last_ok_at : null;
+              if (checkedAt && lastOkAt) {
+                $("lastOkAge").textContent = Math.max(0, checkedAt - lastOkAt) + "s";
+              } else {
+                $("lastOkAge").textContent = "?";
+              }
+
+              const snap = trust.snapshot || null;
+              $("activeRoot").textContent = snap && snap.active_root ? shortHex(snap.active_root) : "?";
+              $("activePolicy").textContent = snap && snap.active_policy_hash ? shortHex(snap.active_policy_hash) : "?";
+
+              const codes = Array.isArray(trust.error_codes) ? trust.error_codes : [];
+              const errs = Array.isArray(trust.errors) ? trust.errors : [];
+              const errEl = $("errorsBox");
+              if (codes.length || errs.length) {
+                errEl.style.display = "block";
+                errEl.textContent = "error_codes:\\n- " + (codes.length ? codes.join(\"\\n- \") : \"(none)\") + \"\\n\\nerrors:\\n- \" + (errs.length ? errs.join(\"\\n- \") : \"(none)\");
+              } else {
+                errEl.style.display = "none";
+                errEl.textContent = "";
+              }
+
               const ok = trust.trusted_now === true;
               $("titleState").textContent = ok ? "Trusted" : "Not trusted";
               setDot(ok ? "ok" : "bad");
+              if (lastTrusted !== null && lastTrusted !== ok) {
+                log("[STATE] trusted_now changed: " + (lastTrusted ? "true" : "false") + " -> " + (ok ? "true" : "false"));
+              }
+              lastTrusted = ok;
             } catch (e) {
               $("titleState").textContent = "Health fetch failed";
               setDot("bad");
@@ -167,6 +279,35 @@ HttpKernel::run(
           $("btnRead").addEventListener("click", () => call("/db/read", "GET"));
           $("btnWrite").addEventListener("click", () => call("/db/write", "POST"));
           $("btnBypass").addEventListener("click", () => call("/bypass/pdo", "GET"));
+          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
+
+          $("btnTraffic").addEventListener("click", () => {
+            if (trafficTimer) {
+              clearInterval(trafficTimer);
+              trafficTimer = null;
+              log("[TRAFFIC] stopped");
+              $("btnTraffic").textContent = "Start traffic";
+              return;
+            }
+            log("[TRAFFIC] started (1 rps, mixed)");
+            $("btnTraffic").textContent = "Stop traffic";
+            trafficTimer = setInterval(async () => {
+              if (trafficInFlight) return;
+              trafficInFlight = true;
+              try {
+                trafficTick++;
+                if (trafficTick % 10 === 0) {
+                  await call("/bypass/pdo", "GET");
+                } else if (trafficTick % 3 === 0) {
+                  await call("/db/write", "POST");
+                } else {
+                  await call("/db/read", "GET");
+                }
+              } finally {
+                trafficInFlight = false;
+              }
+            }, 1000);
+          });
 
           refresh();
           setInterval(refresh, 1000);

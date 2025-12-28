@@ -23,8 +23,8 @@ TAMPER_MARKER="/etc/blackcat/.blackcat_testing_tamper_done"
 NO_REPROVISION_MARKER="/etc/blackcat/.blackcat_testing_disable_reprovision"
 
 CHAIN_ID="${BLACKCAT_TRUST_CHAIN_ID:-4207}"
-RPC_ENDPOINTS="${BLACKCAT_TRUST_RPC_ENDPOINTS:-https://rpc.layeredge.io}"
-RPC_QUORUM="${BLACKCAT_TRUST_RPC_QUORUM:-1}"
+RPC_ENDPOINTS="${BLACKCAT_TRUST_RPC_ENDPOINTS:-https://rpc.layeredge.io,https://edgenscan.io/api/eth-rpc}"
+RPC_QUORUM="${BLACKCAT_TRUST_RPC_QUORUM:-2}"
 MODE="${BLACKCAT_TRUST_MODE:-full}"
 MAX_STALE_SEC="${BLACKCAT_TRUST_MAX_STALE_SEC:-180}"
 TIMEOUT_SEC="${BLACKCAT_TRUST_TIMEOUT_SEC:-5}"
@@ -309,6 +309,14 @@ fi
 if [ "$LOCAL_RPC_PROXY" = "1" ]; then
   if [ -z "$RPC_PROXY_UPSTREAM" ]; then
     echo "[entrypoint] missing BLACKCAT_TESTING_RPC_PROXY_UPSTREAM" >&2
+    echo "[entrypoint] TIP: set it to one of BLACKCAT_TRUST_RPC_ENDPOINTS (must be https)" >&2
+    exit 2
+  fi
+
+  case "$RPC_PROXY_UPSTREAM" in
+    https://*) ;;
+    *)
+      echo "[entrypoint] BLACKCAT_TESTING_RPC_PROXY_UPSTREAM must be https (got: ${RPC_PROXY_UPSTREAM})" >&2
     exit 2
   fi
 

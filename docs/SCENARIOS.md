@@ -173,6 +173,11 @@ Expected outcome:
 - before sabotage: `trusted_now=true`
 - after sabotage: `rpc_ok_now=false` (quorum not met), writes blocked, reads may stay allowed until `max_stale_sec`
 
+Important:
+- Policy v3 runtime-config attestation commits to `trust.web3.rpc_endpoints` + `trust.web3.rpc_quorum`.
+- If your on-chain InstanceController is locked to the default multi-endpoint config, the byzantine-proxy config
+  is a different runtime config and must use a separate InstanceController (separate install).
+
 Run:
 
 ```bash
