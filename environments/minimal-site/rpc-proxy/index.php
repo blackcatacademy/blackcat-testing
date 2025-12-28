@@ -102,42 +102,69 @@ if ($method === null || !in_array($method, ['eth_chainId', 'eth_call', 'eth_getC
     exit;
 }
 
-$ctx = stream_context_create([
-    'http' => [
-        'method' => 'POST',
-        'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
-        'content' => $body,
-        'timeout' => 5,
-        'follow_location' => 0,
-        'max_redirects' => 0,
-    ],
-    'ssl' => [
-        'verify_peer' => true,
-        'verify_peer_name' => true,
-        'allow_self_signed' => false,
-        'peer_name' => $host,
-        'SNI_enabled' => true,
-    ],
-]);
+$maxRespBytes = 1024 * 1024;
 
-$fp = @fopen($upstream, 'rb', false, $ctx);
-if (!is_resource($fp)) {
+if (!function_exists('curl_init')) {
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "rpc proxy misconfigured (ext-curl missing)\n";
+    exit;
+}
+
+/** @var \CurlHandle|false $ch */
+$ch = curl_init($upstream);
+if ($ch === false) {
     http_response_code(502);
     header('Content-Type: text/plain; charset=utf-8');
     echo "Upstream error\n";
     exit;
 }
 
-$maxRespBytes = 1024 * 1024;
 $respRaw = '';
-while (!feof($fp) && strlen($respRaw) <= $maxRespBytes) {
-    $chunk = fread($fp, 8192);
-    if ($chunk === false) {
-        break;
-    }
-    $respRaw .= $chunk;
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => $body,
+    CURLOPT_HTTPHEADER => [
+        'Content-Type: application/json',
+        'Accept: application/json',
+    ],
+    CURLOPT_CONNECTTIMEOUT => 5,
+    CURLOPT_TIMEOUT => 5,
+    CURLOPT_FOLLOWLOCATION => false,
+    CURLOPT_MAXREDIRS => 0,
+    CURLOPT_WRITEFUNCTION => static function ($ch, string $data) use (&$respRaw, $maxRespBytes): int {
+        $respRaw .= $data;
+        if (strlen($respRaw) > $maxRespBytes) {
+            return 0;
+        }
+        return strlen($data);
+    },
+]);
+
+if (defined('CURLOPT_PROTOCOLS') && defined('CURLPROTO_HTTPS')) {
+    curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
 }
-fclose($fp);
+if (defined('CURLOPT_REDIR_PROTOCOLS') && defined('CURLPROTO_HTTPS')) {
+    curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+}
+if (defined('CURLOPT_SSL_VERIFYPEER')) {
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+}
+if (defined('CURLOPT_SSL_VERIFYHOST')) {
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+}
+
+$ok = curl_exec($ch);
+if ($ok === false) {
+    curl_close($ch);
+    http_response_code(502);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "Upstream error\n";
+    exit;
+}
+
+$code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
 
 if ($respRaw === '') {
     http_response_code(502);
@@ -149,6 +176,12 @@ if (strlen($respRaw) > $maxRespBytes) {
     http_response_code(502);
     header('Content-Type: text/plain; charset=utf-8');
     echo "Upstream response too large\n";
+    exit;
+}
+if ($code < 200 || $code >= 300) {
+    http_response_code(502);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "Upstream error\n";
     exit;
 }
 

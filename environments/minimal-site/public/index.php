@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use BlackCat\Config\Runtime\Config;
 use BlackCat\Core\Database;
+use BlackCat\Core\Database\DbBootstrap;
 use BlackCat\Core\Kernel\HttpKernel;
 use BlackCat\Core\Kernel\HttpKernelContext;
 use BlackCat\Core\Kernel\HttpKernelOptions;
@@ -46,23 +47,7 @@ $sendText = static function (int $status, string $body): void {
 
 $ensureDb = static function (): Database {
     if (!Database::isInitialized()) {
-        $dsn = Config::requireString('db.dsn');
-        $user = Config::get('db.user');
-        $pass = Config::get('db.pass');
-
-        Database::init(
-            [
-                'dsn' => $dsn,
-                'user' => is_string($user) ? $user : null,
-                'pass' => is_string($pass) ? $pass : null,
-                'options' => [],
-                'init_commands' => [
-                    "SET time_zone = '+00:00'",
-                ],
-                'appName' => 'blackcat-testing',
-            ],
-            null,
-        );
+        DbBootstrap::initFromSecretsAgentIfNeeded(null, 'blackcat-testing');
     }
 
     return Database::getInstance();

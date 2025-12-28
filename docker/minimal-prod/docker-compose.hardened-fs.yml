@@ -1,0 +1,21 @@
+services:
+  app:
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    volumes:
+      - blackcat_etc:/etc/blackcat
+      - blackcat_var:/var/lib/blackcat
+
+  runner:
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    volumes:
+      - blackcat_etc:/etc/blackcat
+      - blackcat_var:/var/lib/blackcat
+
+volumes:
+  blackcat_var: {}

@@ -6,6 +6,8 @@ services:
       MARIADB_USER: blackcat
       MARIADB_PASSWORD: blackcat
       MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-blackcat-testing.sql:ro
     healthcheck:
       test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
       interval: 2s

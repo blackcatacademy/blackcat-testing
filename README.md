@@ -37,6 +37,14 @@ Open:
 Presentation script:
 - `docs/PRESENTATION_DEMO.md`
 
+### Optional: hardened filesystem mode
+
+Runs the demo with a read-only container root filesystem and only `/etc/blackcat` + `/var/lib/blackcat` writable:
+
+```bash
+docker compose -f docker/minimal-prod/docker-compose.yml -f docker/minimal-prod/docker-compose.hardened-fs.yml up --build
+```
+
 ## Test suites
 
 - Offline (default): deterministic tests using a stub JSON-RPC transport (`tests/Support/StubWeb3Transport.php`).

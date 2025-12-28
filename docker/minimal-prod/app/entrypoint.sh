@@ -34,6 +34,8 @@ INSTANCE_CONTROLLER="${BLACKCAT_INSTANCE_CONTROLLER:-}"
 DB_DSN="${BLACKCAT_DB_DSN:-}"
 DB_USER="${BLACKCAT_DB_USER:-}"
 DB_PASS="${BLACKCAT_DB_PASS:-}"
+DB_RO_USER="${BLACKCAT_DB_RO_USER:-blackcat_ro}"
+DB_RO_PASS="${BLACKCAT_DB_RO_PASS:-blackcat_ro}"
 
 if [ -z "$INSTANCE_CONTROLLER" ]; then
   echo "[entrypoint] missing BLACKCAT_INSTANCE_CONTROLLER" >&2
@@ -44,6 +46,7 @@ export ROOT_DIR MANIFEST_PATH CONFIG_PATH FORCE_PROVISION
 export NO_REPROVISION_MARKER
 export CHAIN_ID RPC_ENDPOINTS RPC_QUORUM MODE MAX_STALE_SEC TIMEOUT_SEC INSTANCE_CONTROLLER
 export DB_DSN DB_USER DB_PASS
+export DB_RO_USER DB_RO_PASS
 export ENABLE_SECRETS_AGENT
 
 php -r '
@@ -76,11 +79,6 @@ php -r '
         ],
       ],
     ],
-    "db" => [
-      "dsn" => (string) getenv("DB_DSN"),
-      "user" => (string) getenv("DB_USER"),
-      "pass" => (string) getenv("DB_PASS"),
-    ],
   ];
 
   if (getenv("ENABLE_SECRETS_AGENT") === "1") {
@@ -89,6 +87,13 @@ php -r '
       "agent" => [
         "socket_path" => "/etc/blackcat/secrets-agent.sock",
       ],
+    ];
+
+    $cfg["db"] = [
+      "agent" => [
+        "socket_path" => "/etc/blackcat/secrets-agent.sock",
+      ],
+      "credentials_file" => "/etc/blackcat/db.credentials.json",
     ];
   }
 
@@ -164,8 +169,46 @@ if [ "$ENABLE_SECRETS_AGENT" = "1" ]; then
     }
   '
 
+  echo "[entrypoint] provisioning root-owned DB credentials file (secrets-agent mode)" >&2
+  php -r '
+    $path = "/etc/blackcat/db.credentials.json";
+    if (is_link($path)) {
+      throw new RuntimeException("Refusing symlink db.credentials.json");
+    }
+
+    $dsn = (string) getenv("DB_DSN");
+    $rwUser = (string) getenv("DB_USER");
+    $rwPass = (string) getenv("DB_PASS");
+    $roUser = (string) getenv("DB_RO_USER");
+    $roPass = (string) getenv("DB_RO_PASS");
+
+    if ($dsn === "" || $rwUser === "" || $rwPass === "" || $roUser === "" || $roPass === "") {
+      throw new RuntimeException("Missing DB credential env vars (DB_DSN/DB_USER/DB_PASS/DB_RO_USER/DB_RO_PASS).");
+    }
+
+    $payload = [
+      "read" => ["dsn" => $dsn, "user" => $roUser, "pass" => $roPass],
+      "write" => ["dsn" => $dsn, "user" => $rwUser, "pass" => $rwPass],
+      "meta" => ["created_at" => gmdate("c")],
+    ];
+
+    $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    if (!is_string($json)) {
+      throw new RuntimeException("Unable to encode db.credentials.json");
+    }
+
+    $tmp = $path . ".tmp-" . bin2hex(random_bytes(6));
+    file_put_contents($tmp, $json . "\n");
+    @chmod($tmp, 0600);
+    if (!@rename($tmp, $path)) {
+      @unlink($tmp);
+      throw new RuntimeException("Unable to move db.credentials.json into place");
+    }
+    @chmod($path, 0600);
+  '
+
   echo "[entrypoint] starting secrets agent (root) on unix socket" >&2
-  php /srv/blackcat/site/bin/secrets-agent.php >/dev/null 2>&1 &
+  php /srv/blackcat/site/bin/secrets-agent.php &
   agent_pid="$!"
 
   # Fail-closed: do not continue boot if the agent is expected but not running.
@@ -365,8 +408,9 @@ if [ "$LOCAL_RPC_PROXY" = "1" ]; then
     https://*) ;;
     *)
       echo "[entrypoint] BLACKCAT_TESTING_RPC_PROXY_UPSTREAM must be https (got: ${RPC_PROXY_UPSTREAM})" >&2
-    exit 2
-  fi
+      exit 2
+      ;;
+  esac
 
   export BLACKCAT_TESTING_RPC_PROXY_UPSTREAM="$RPC_PROXY_UPSTREAM"
   export BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC="$RPC_PROXY_SABOTAGE_AFTER_SEC"
@@ -375,5 +419,8 @@ if [ "$LOCAL_RPC_PROXY" = "1" ]; then
   echo "[entrypoint] starting local RPC proxy on 127.0.0.1:${RPC_PROXY_PORT} (upstream=${RPC_PROXY_UPSTREAM})" >&2
   php -S "127.0.0.1:${RPC_PROXY_PORT}" -t /srv/blackcat/site/rpc-proxy >/dev/null 2>&1 &
 fi
+
+unset BLACKCAT_DB_DSN BLACKCAT_DB_USER BLACKCAT_DB_PASS BLACKCAT_DB_RO_USER BLACKCAT_DB_RO_PASS || true
+unset DB_DSN DB_USER DB_PASS DB_RO_USER DB_RO_PASS || true
 
 exec su -s /bin/sh -c "php -S 0.0.0.0:8080 -t /srv/blackcat/site/public" www-data

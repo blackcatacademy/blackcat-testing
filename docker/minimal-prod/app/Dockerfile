@@ -16,11 +16,18 @@ RUN COMPOSER_MIRROR_PATH_REPOS=1 composer install --no-dev --no-interaction --no
 FROM php:8.3-cli
 
 RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends libcurl4-openssl-dev; \
   docker-php-ext-install pdo_mysql; \
+  docker-php-ext-install curl; \
+  rm -rf /var/lib/apt/lists/*; \
   php -m | grep -E '^pdo_mysql$'; \
+  php -m | grep -E '^curl$'; \
   php -m | grep -E '^sodium$'
 
 WORKDIR /srv/blackcat
+
+COPY blackcat-testing/docker/minimal-prod/app/blackcat-hardening.ini /usr/local/etc/php/conf.d/99-blackcat-hardening.ini
 
 COPY --from=builder /workspace/blackcat-testing/vendor/ /srv/blackcat/vendor/
 COPY blackcat-testing/environments/minimal-site/ /srv/blackcat/site/
