@@ -127,9 +127,9 @@ PY
 
   # Best-effort balance read (requires reachable RPC).
   docker run --rm --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
-    balance "${addr}" --rpc-url "${RPC_URL}" --chain-id "${CHAIN_ID}" >/dev/null 2>&1 \
+    balance "${addr}" --rpc-url "${RPC_URL}" >/dev/null 2>&1 \
     && docker run --rm --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
-      balance "${addr}" --rpc-url "${RPC_URL}" --chain-id "${CHAIN_ID}" \
+      balance --ether "${addr}" --rpc-url "${RPC_URL}" \
     || echo "[demo-wallet] balance: (rpc not available)"
 }
 
@@ -164,7 +164,7 @@ PY
   echo "[demo-wallet] funding ${addr} with ${amount} ether on chain_id=${CHAIN_ID} via ${RPC_URL}"
 
   docker run --rm --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
-    send --private-key "${FUNDER_PRIVATE_KEY}" --rpc-url "${RPC_URL}" --chain-id "${CHAIN_ID}" \
+    send --private-key "${FUNDER_PRIVATE_KEY}" --rpc-url "${RPC_URL}" --chain "${CHAIN_ID}" \
     "${addr}" --value "${amount}ether"
 }
 
