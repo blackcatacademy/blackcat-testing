@@ -18,6 +18,7 @@ use BlackCat\Core\Kernel\KernelBootstrap;
 use BlackCat\Core\TrustKernel\TrustKernel;
 use BlackCat\Core\TrustKernel\TrustKernelException;
 use BlackCat\Core\Security\KeyManager;
+use BlackCat\Core\Security\SecretsAgentPolicy;
 
 function out(string $msg): void
 {
@@ -29,27 +30,31 @@ function out(string $msg): void
  */
 function keyBasenameAllowlist(): array
 {
-    $bytes32 = KeyManager::keyByteLen();
+    if (class_exists(SecretsAgentPolicy::class) && is_callable([SecretsAgentPolicy::class, 'keyBasenameAllowlist'])) {
+        /** @var mixed $m */
+        $m = SecretsAgentPolicy::keyBasenameAllowlist();
+        if (is_array($m)) {
+            /** @var array<string,int> $m */
+            return $m;
+        }
+    }
 
     return [
-        // blackcat-core / crypto primitives
-        'crypto_key' => $bytes32,
-        'filevault_key' => $bytes32,
-
-        // common kernel/security slots
+        // Fallback (should match blackcat-core)
+        'crypto_key' => KeyManager::keyByteLen(),
+        'filevault_key' => KeyManager::keyByteLen(),
+        'cache_crypto' => KeyManager::keyByteLen(),
         'password_pepper' => 32,
         'app_salt' => 32,
         'session_key' => 32,
         'ip_hash_key' => 32,
         'csrf_key' => 32,
-
-        // optional: jwt + email flows (still kernel-owned)
         'jwt_key' => 32,
-        'email_key' => 32,
-        'email_hash_key' => 32,
-        'email_verification_key' => 32,
-        'unsubscribe_key' => 32,
-        'profile_crypto' => 32,
+        'email_key' => KeyManager::keyByteLen(),
+        'email_hash_key' => KeyManager::keyByteLen(),
+        'email_verification_key' => KeyManager::keyByteLen(),
+        'unsubscribe_key' => KeyManager::keyByteLen(),
+        'profile_crypto' => KeyManager::keyByteLen(),
     ];
 }
 
@@ -158,6 +163,71 @@ $keysDir = null;
 $dbCredsPath = null;
 $kernel = null;
 
+/**
+ * @return array{uid:?int,gid:?int,pid:?int,peer:?string}
+ */
+function peerInfo(mixed $conn): array
+{
+    $peer = null;
+    $name = @stream_socket_get_name($conn, true);
+    if (is_string($name)) {
+        $name = trim($name);
+        if ($name !== '' && !str_contains($name, "\0")) {
+            $peer = $name;
+        }
+    }
+
+    $uid = null;
+    $gid = null;
+    $pid = null;
+
+    if (
+        function_exists('socket_import_stream')
+        && function_exists('socket_get_option')
+        && defined('SOL_SOCKET')
+        && defined('SO_PEERCRED')
+    ) {
+        /** @var \Socket|false $sock */
+        $sock = @socket_import_stream($conn);
+        if ($sock !== false) {
+            /** @var mixed $cred */
+            $cred = @socket_get_option($sock, SOL_SOCKET, SO_PEERCRED);
+            if (is_array($cred)) {
+                $uid = isset($cred['uid']) && is_int($cred['uid']) ? $cred['uid'] : null;
+                $gid = isset($cred['gid']) && is_int($cred['gid']) ? $cred['gid'] : null;
+                $pid = isset($cred['pid']) && is_int($cred['pid']) ? $cred['pid'] : null;
+            }
+        }
+    }
+
+    return [
+        'uid' => $uid,
+        'gid' => $gid,
+        'pid' => $pid,
+        'peer' => $peer,
+    ];
+}
+
+function peerKey(array $info): string
+{
+    $parts = [];
+    if (isset($info['uid']) && is_int($info['uid'])) {
+        $parts[] = 'uid=' . $info['uid'];
+    }
+    if (isset($info['gid']) && is_int($info['gid'])) {
+        $parts[] = 'gid=' . $info['gid'];
+    }
+    if (isset($info['pid']) && is_int($info['pid'])) {
+        $parts[] = 'pid=' . $info['pid'];
+    }
+    $peer = $info['peer'] ?? null;
+    if (is_string($peer) && $peer !== '') {
+        $parts[] = 'peer=' . $peer;
+    }
+
+    return $parts !== [] ? implode(' ', $parts) : 'peer=unknown';
+}
+
 try {
     if (Config::isInitialized()) {
         $repo = Config::repo();
@@ -257,6 +327,7 @@ while (true) {
         continue;
     }
 
+    $peer = peerKey(peerInfo($conn));
     stream_set_timeout($conn, 2);
 
     $line = stream_get_line($conn, $maxLine, "\n");
@@ -338,8 +409,9 @@ while (true) {
             }
 
             $auditKey = 'keys:' . $basename;
-            $audit[$auditKey] = ($audit[$auditKey] ?? 0) + 1;
-            out('[secrets-agent] audit op=get_all_keys basename=' . $basename . ' count=' . count($outKeys) . ' total=' . $audit[$auditKey]);
+            $peerAuditKey = $peer . '|' . $auditKey;
+            $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
+            out('[secrets-agent] audit ' . $peer . ' op=get_all_keys basename=' . $basename . ' versions=' . count($outKeys) . ' total=' . $audit[$peerAuditKey]);
 
             fwrite($conn, json_encode(['ok' => true, 'keys' => $outKeys], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
             fclose($conn);
@@ -393,8 +465,9 @@ while (true) {
         }
 
         $auditKey = 'db:' . $role;
-        $audit[$auditKey] = ($audit[$auditKey] ?? 0) + 1;
-        out('[secrets-agent] audit op=get_db_credentials role=' . $role . ' total=' . $audit[$auditKey]);
+        $peerAuditKey = $peer . '|' . $auditKey;
+        $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
+        out('[secrets-agent] audit ' . $peer . ' op=get_db_credentials role=' . $role . ' total=' . $audit[$peerAuditKey]);
 
         fwrite(
             $conn,

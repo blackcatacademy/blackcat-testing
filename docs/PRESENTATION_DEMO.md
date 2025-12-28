@@ -11,6 +11,15 @@ From the `blackcatacademy` root:
 docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
 ```
 
+Optional hardened filesystem mode:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.hardened-fs.yml \
+  up --build
+```
+
 Open:
 - Dashboard: `http://localhost:8088/`
 - Raw status: `http://localhost:8088/health`
@@ -22,6 +31,18 @@ The dashboard shows:
 
 Optional:
 - Debug status (not for monitoring): `http://localhost:8088/health/debug`
+
+## 1.1) Optional: show funded demo wallets
+
+If you want the dashboard to display a list of demo wallet addresses and their current balances (via JSON-RPC quorum),
+set:
+
+```bash
+BLACKCAT_TESTING_DEMO_WALLETS=0xYourAddress1,0xYourAddress2 \
+docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
+```
+
+The container writes `/etc/blackcat/demo.wallets.public.json` (addresses only). Private keys are never shown.
 
 ## 2) What to say (high-level)
 
@@ -42,6 +63,10 @@ The default stack schedules a tamper after `BLACKCAT_TESTING_TAMPER_AFTER_SEC` (
 You should see:
 - `trusted_now=true` initially
 - after tamper: `trusted_now=false`, writes blocked, and errors visible on the dashboard
+
+Note:
+- In hardened read-only rootfs mode, “unexpected file in app root” tamper may be blocked by the filesystem.
+  Use `BLACKCAT_TESTING_TAMPER_KIND=modify_config` or `modify_manifest` for a reliable demo.
 
 ### B) RPC outage → stale reads
 

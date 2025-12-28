@@ -95,7 +95,7 @@ try {
 }
 
 $method = is_array($req) && isset($req['method']) && is_string($req['method']) ? $req['method'] : null;
-if ($method === null || !in_array($method, ['eth_chainId', 'eth_call', 'eth_getCode'], true)) {
+if ($method === null || !in_array($method, ['eth_chainId', 'eth_call', 'eth_getCode', 'eth_getBalance'], true)) {
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
     echo "Forbidden\n";

@@ -10,6 +10,7 @@ use BlackCat\Core\Kernel\HttpKernelContext;
 use BlackCat\Core\Kernel\HttpKernelOptions;
 use BlackCat\Core\Security\Crypto;
 use BlackCat\Core\TrustKernel\TrustKernelException;
+use BlackCat\Core\TrustKernel\Web3RpcQuorumClient;
 
 require __DIR__ . '/../../vendor/autoload.php';
 
@@ -22,7 +23,7 @@ if (!is_string($path) || $path === '') {
 // Allow a small monitoring endpoint even when strict mode is denying reads.
 // This endpoint must remain read-only and must not expose secrets.
 $opts = new HttpKernelOptions();
-if ($path === '/health' || $path === '/health/debug' || $path === '/' || $path === '/demo') {
+if ($path === '/health' || $path === '/health/debug' || $path === '/' || $path === '/demo' || $path === '/demo/wallets') {
     $opts->checkTrustOnRequest = false;
 }
 
@@ -171,6 +172,14 @@ HttpKernel::run(
         echo '<p class="muted">This page is intentionally allowed even when strict mode denies reads, so you can observe failures. It does not expose local filesystem details.</p>';
         echo '</div>';
 
+        echo '<div class="card"><div class="row" style="justify-content:space-between">';
+        echo '<div class="row"><span class="pill"><strong>Demo wallets</strong></span><span class="pill">token: <strong id="tokenSymbol">?</strong></span><span class="pill">wallets: <strong id="walletCount">?</strong></span></div>';
+        echo '<div class="row"><button id="btnRefreshWallets">Refresh</button></div>';
+        echo '</div>';
+        echo '<pre id="walletsBox">{"loading":true}</pre>';
+        echo '<p class="muted">Optional: mount <span class="k">/etc/blackcat/demo.wallets.public.json</span> (addresses only). Balances are read via JSON-RPC quorum (<span class="k">eth_getBalance</span>).</p>';
+        echo '</div>';
+
         echo '<div class="card"><div class="row"><button id="btnRead">DB read</button><button id="btnWrite">DB write</button><button id="btnBypass">Probe PDO bypass</button><button id="btnTraffic">Start traffic</button><button id="btnClear">Clear log</button></div>';
         echo '<pre id="actionsLog">Ready.</pre>';
         echo '<p class="muted">Expected in strict mode: writes denied when <span class="k">write_allowed=false</span>, reads denied when <span class="k">read_allowed=false</span>, and the PDO bypass probe is always denied.</p>';
@@ -208,12 +217,62 @@ HttpKernel::run(
 
 	          let lastTrusted = null;
 	          let lastDebugTrust = null;
-	          let debugTick = 0;
-	          let trafficTimer = null;
-	          let trafficInFlight = false;
-	          let trafficTick = 0;
+		          let debugTick = 0;
+		          let trafficTimer = null;
+		          let trafficInFlight = false;
+		          let trafficTick = 0;
+	              let walletsInFlight = false;
+	              let lastWalletsAt = 0;
 
-	          async function refreshDebug() {
+            function formatEdgenFromWeiHex(hexWei) {
+              if (typeof hexWei !== "string" || !hexWei.startsWith("0x")) return "?";
+              let wei;
+              try { wei = BigInt(hexWei); } catch { return "?"; }
+              const base = 10n ** 18n;
+              const whole = wei / base;
+              const frac = wei % base;
+              const fracStr = frac.toString().padStart(18, "0").slice(0, 4);
+              return `${whole.toString()}.${fracStr}`;
+            }
+
+            async function refreshWallets(force = false) {
+              const now = Date.now();
+              if (!force && walletsInFlight) return;
+              if (!force && (now - lastWalletsAt) < 5000) return;
+              walletsInFlight = true;
+              lastWalletsAt = now;
+
+              try {
+                const res = await fetch("/demo/wallets", {cache:"no-store"});
+                const json = await res.json();
+
+                const token = json && typeof json.token_symbol === "string" ? json.token_symbol : "EDGEN";
+                $("tokenSymbol").textContent = token;
+
+                const wallets = json && Array.isArray(json.wallets) ? json.wallets : [];
+                $("walletCount").textContent = wallets.length.toString();
+
+                const rpcOk = json && json.rpc_ok === true;
+                const lines = [];
+                lines.push(rpcOk ? "[RPC] quorum ok" : "[RPC] not available (or quorum not met)");
+                for (const w of wallets) {
+                  const addr = w && typeof w.address === "string" ? w.address : "?";
+                  const label = w && typeof w.label === "string" ? w.label : "wallet";
+                  const bal = w && typeof w.balance_wei === "string" ? w.balance_wei : null;
+                  const fmt = bal ? formatEdgenFromWeiHex(bal) : "?";
+                  lines.push(`${label}: ${shortHex(addr)} balance=${fmt} ${token}`);
+                }
+                $("walletsBox").textContent = lines.join("\n");
+              } catch (e) {
+                $("walletsBox").textContent = "[wallets] fetch failed";
+                $("walletCount").textContent = "?";
+                $("tokenSymbol").textContent = "EDGEN";
+              } finally {
+                walletsInFlight = false;
+              }
+            }
+
+		          async function refreshDebug() {
 	            try {
 	              const res = await fetch("/health/debug", {cache:"no-store"});
 	              const json = await res.json();
@@ -240,16 +299,16 @@ HttpKernel::run(
 	              setBool("paused", trust.paused);
 	              const checkedAt = typeof trust.checked_at === "number" ? trust.checked_at : null;
 	              const lastOkAt = typeof trust.last_ok_at === "number" ? trust.last_ok_at : null;
-	              if (checkedAt && lastOkAt) {
-	                $("lastOkAge").textContent = Math.max(0, checkedAt - lastOkAt) + "s";
-	              } else {
-	                $("lastOkAge").textContent = "?";
-	              }
+		              if (checkedAt && lastOkAt) {
+		                $("lastOkAge").textContent = Math.max(0, checkedAt - lastOkAt) + "s";
+		              } else {
+		                $("lastOkAge").textContent = "?";
+		              }
 
-	              debugTick++;
-	              if (lastDebugTrust === null || trust.trusted_now !== true || debugTick % 5 === 0) {
-	                await refreshDebug();
-	              }
+		              debugTick++;
+		              if (lastDebugTrust === null || trust.trusted_now !== true || debugTick % 5 === 0) {
+		                await refreshDebug();
+		              }
 
 	              const snap = (lastDebugTrust && lastDebugTrust.snapshot) ? lastDebugTrust.snapshot : null;
 	              $("activeRoot").textContent = snap && snap.active_root ? shortHex(snap.active_root) : "?";
@@ -260,7 +319,7 @@ HttpKernel::run(
 	              const errEl = $("errorsBox");
 	              if (codes.length || errs.length) {
 	                errEl.style.display = "block";
-	                errEl.textContent = "error_codes:\\n- " + (codes.length ? codes.join(\"\\n- \") : \"(none)\") + \"\\n\\nerrors:\\n- \" + (errs.length ? errs.join(\"\\n- \") : \"(none)\");
+	                errEl.textContent = "error_codes:\\n- " + (codes.length ? codes.join("\\n- ") : "(none)") + "\\n\\nerrors:\\n- " + (errs.length ? errs.join("\\n- ") : "(none)");
 	              } else {
 	                errEl.style.display = "none";
 	                errEl.textContent = "";
@@ -288,10 +347,11 @@ HttpKernel::run(
           $("btnRead").addEventListener("click", () => call("/db/read", "GET"));
           $("btnWrite").addEventListener("click", () => call("/db/write", "POST"));
           $("btnBypass").addEventListener("click", () => call("/bypass/pdo", "GET"));
-          $("btnCrypto").addEventListener("click", () => call("/crypto/roundtrip", "POST"));
-          $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
-          $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
-          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
+	          $("btnCrypto").addEventListener("click", () => call("/crypto/roundtrip", "POST"));
+	          $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
+	          $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
+            $("btnRefreshWallets").addEventListener("click", () => refreshWallets(true));
+	          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
 
           $("btnTraffic").addEventListener("click", () => {
             if (trafficTimer) {
@@ -323,9 +383,11 @@ HttpKernel::run(
             }, 1000);
           });
 
-          refresh();
-          setInterval(refresh, 1000);
-        </script>';
+	          refresh();
+            refreshWallets(true);
+	          setInterval(refresh, 1000);
+            setInterval(() => refreshWallets(false), 5000);
+	        </script>';
 
         echo '</body></html>';
         return;
@@ -350,6 +412,137 @@ HttpKernel::run(
         $sendJson(200, [
             'ok' => true,
             'trust' => $status,
+        ]);
+        return;
+    }
+
+    if ($path === '/demo/wallets') {
+        $file = '/etc/blackcat/demo.wallets.public.json';
+
+        /** @var list<array{label:string,address:string}> $wallets */
+        $wallets = [];
+
+        try {
+            if (is_file($file) && !is_link($file) && is_readable($file)) {
+                $raw = @file_get_contents($file);
+                if (is_string($raw) && trim($raw) !== '') {
+                    /** @var mixed $decoded */
+                    $decoded = json_decode($raw, true);
+                    if (is_array($decoded)) {
+                        $items = isset($decoded['wallets']) && is_array($decoded['wallets']) ? $decoded['wallets'] : $decoded;
+                        if (is_array($items)) {
+                            foreach ($items as $i => $w) {
+                                $addr = null;
+                                $label = null;
+                                if (is_string($w)) {
+                                    $addr = $w;
+                                } elseif (is_array($w)) {
+                                    $addr = $w['address'] ?? null;
+                                    $label = $w['label'] ?? null;
+                                }
+                                if (!is_string($addr)) {
+                                    continue;
+                                }
+                                $addr = trim($addr);
+                                if (!preg_match('/^0x[a-fA-F0-9]{40}$/', $addr)) {
+                                    continue;
+                                }
+                                $addr = '0x' . strtolower(substr($addr, 2));
+                                if ($addr === '0x0000000000000000000000000000000000000000') {
+                                    continue;
+                                }
+                                $labelStr = is_string($label) && trim($label) !== '' ? trim($label) : ('wallet-' . ((int) $i + 1));
+                                $wallets[] = ['label' => $labelStr, 'address' => $addr];
+                                if (count($wallets) >= 10) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // best-effort only
+        }
+
+        $chainId = null;
+        $endpoints = null;
+        $quorum = null;
+        $timeoutSec = 5;
+
+        try {
+            $v = Config::get('trust.web3.chain_id');
+            if (is_int($v)) {
+                $chainId = $v;
+            } elseif (is_string($v) && ctype_digit(trim($v))) {
+                $chainId = (int) trim($v);
+            }
+
+            $e = Config::get('trust.web3.rpc_endpoints');
+            if (is_array($e)) {
+                $out = [];
+                foreach ($e as $ep) {
+                    if (!is_string($ep)) {
+                        continue;
+                    }
+                    $ep = trim($ep);
+                    if ($ep === '' || str_contains($ep, "\0")) {
+                        continue;
+                    }
+                    $out[] = $ep;
+                }
+                $endpoints = $out !== [] ? $out : null;
+            }
+
+            $q = Config::get('trust.web3.rpc_quorum');
+            if (is_int($q)) {
+                $quorum = $q;
+            } elseif (is_string($q) && ctype_digit(trim($q))) {
+                $quorum = (int) trim($q);
+            }
+
+            $t = Config::get('trust.web3.timeout_sec');
+            if (is_int($t) && $t >= 1 && $t <= 60) {
+                $timeoutSec = $t;
+            } elseif (is_string($t) && ctype_digit(trim($t))) {
+                $timeoutSec = max(1, min(60, (int) trim($t)));
+            }
+        } catch (\Throwable) {
+            // best-effort only
+        }
+
+        $outWallets = [];
+        $rpcOk = false;
+        $rpcError = null;
+
+        if ($chainId !== null && $endpoints !== null && $quorum !== null && $wallets !== []) {
+            try {
+                $rpc = new Web3RpcQuorumClient($endpoints, $chainId, $quorum, null, $timeoutSec);
+                foreach ($wallets as $w) {
+                    $addr = $w['address'];
+                    $bal = $rpc->ethGetBalanceQuorum($addr);
+                    $outWallets[] = [
+                        'label' => $w['label'],
+                        'address' => $addr,
+                        'balance_wei' => $bal,
+                    ];
+                }
+                $rpcOk = true;
+            } catch (\Throwable) {
+                $rpcOk = false;
+                $rpcError = 'rpc_error';
+            }
+        } else {
+            $outWallets = $wallets;
+        }
+
+        $sendJson(200, [
+            'ok' => true,
+            'token_symbol' => 'EDGEN',
+            'chain_id' => $chainId,
+            'rpc_ok' => $rpcOk,
+            'wallets' => $outWallets,
+            'error' => $rpcError,
         ]);
         return;
     }

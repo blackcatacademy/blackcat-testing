@@ -8,8 +8,10 @@ It boots:
 
 Endpoints (intentionally tiny):
 
+- `GET /` (or `/demo`) — local demo dashboard (read-only, does not expose secrets).
 - `GET /health` — JSON status snapshot (sanitized, safe for monitoring).
 - `GET /health/debug` — extended JSON payload for local debugging (not for public monitoring).
+- `GET /demo/wallets` — optional demo wallet balances via JSON-RPC quorum (addresses only).
 - `POST /db/write` — tries a DB write via `BlackCat\Core\Database` wrapper.
 - `GET /db/read` — tries a DB read via `BlackCat\Core\Database` wrapper.
 - `GET /bypass/pdo` — attempts to access raw PDO (must be denied by TrustKernel guard).

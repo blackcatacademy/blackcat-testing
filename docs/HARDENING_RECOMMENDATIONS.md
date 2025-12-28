@@ -24,6 +24,10 @@ Implementation depends on platform:
 - host firewall (nftables/iptables, cloud security groups, etc.)
 - container runtime policies (Kubernetes NetworkPolicy, CNI egress policies)
 
+Tip (practical):
+- treat Web3 RPC as a dedicated “egress service” and route RPC traffic through a controlled gateway/proxy you own
+  (so the allowlist is stable and auditable).
+
 ## MAC/LSM profiles (optional, strong)
 
 When available, apply a mandatory access control profile:
@@ -32,6 +36,38 @@ When available, apply a mandatory access control profile:
 - deny process execution syscalls where possible (many apps do not need them)
 
 This is intentionally left as a platform-specific profile (not committed into the core repos).
+
+### AppArmor example (starter skeleton)
+
+This is only a starting point (you must adapt to your distro + web server model):
+
+```text
+#include <tunables/global>
+
+profile blackcat-minimal-site flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  # Read-only app code
+  /srv/blackcat/** r,
+
+  # Runtime state (exactly defined)
+  /etc/blackcat/** rw,
+  /var/lib/blackcat/** rw,
+
+  # Temporary dirs
+  /tmp/** rw,
+  /var/tmp/** rw,
+
+  # Deny everything else by default
+  deny /** wklx,
+}
+```
+
+### SELinux note
+
+Prefer a dedicated SELinux type for runtime state (`/etc/blackcat`, `/var/lib/blackcat`) and keep the application
+root read-only. In Kubernetes, map this to an explicit SecurityContext + readOnlyRootFilesystem.
 
 ## Defense in depth
 

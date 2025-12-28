@@ -14,6 +14,8 @@ TAMPER_AFTER_SEC="${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
 TAMPER_KIND="${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
 RPC_SABOTAGE_AFTER_SEC="${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
 
+DEMO_WALLETS="${BLACKCAT_TESTING_DEMO_WALLETS:-}"
+
 mkdir -p /etc/blackcat
 chmod 0750 /etc/blackcat || true
 
@@ -48,6 +50,7 @@ export CHAIN_ID RPC_ENDPOINTS RPC_QUORUM MODE MAX_STALE_SEC TIMEOUT_SEC INSTANCE
 export DB_DSN DB_USER DB_PASS
 export DB_RO_USER DB_RO_PASS
 export ENABLE_SECRETS_AGENT
+export DEMO_WALLETS
 
 php -r '
   $force = getenv("FORCE_PROVISION") === "1";
@@ -152,6 +155,78 @@ if [ "$BOOT_MODE" = "compute" ]; then
   echo "[entrypoint] compute-only mode; exiting." >&2
   exit 0
 fi
+
+php -r '
+  $force = getenv("FORCE_PROVISION") === "1";
+  $noReprovisionMarker = getenv("NO_REPROVISION_MARKER") ?: "";
+  $noReprovision = !$force && is_string($noReprovisionMarker) && $noReprovisionMarker !== "" && file_exists($noReprovisionMarker);
+
+  $file = "/etc/blackcat/demo.wallets.public.json";
+  $walletsRaw = (string) getenv("DEMO_WALLETS");
+
+  if ($noReprovision || trim($walletsRaw) === "") {
+    exit(0);
+  }
+
+  if (is_link($file)) {
+    throw new RuntimeException("Refusing symlink demo wallets file: {$file}");
+  }
+
+  if (!$force && is_file($file)) {
+    exit(0);
+  }
+
+  $items = array_values(array_filter(array_map("trim", explode(",", $walletsRaw)), fn($v) => $v !== ""));
+  $wallets = [];
+  foreach ($items as $i => $addr) {
+    if (!is_string($addr) || !preg_match("/^0x[a-fA-F0-9]{40}$/", $addr)) {
+      continue;
+    }
+    $addr = "0x" . strtolower(substr($addr, 2));
+    if ($addr === "0x0000000000000000000000000000000000000000") {
+      continue;
+    }
+    $wallets[] = [
+      "label" => "wallet-" . ((int) $i + 1),
+      "address" => $addr,
+    ];
+    if (count($wallets) >= 10) {
+      break;
+    }
+  }
+
+  if ($wallets === []) {
+    fwrite(STDERR, "[entrypoint] WARN: demo wallets env provided but no valid addresses found\n");
+    exit(0);
+  }
+
+  $payload = [
+    "wallets" => $wallets,
+    "meta" => [
+      "created_at" => gmdate("c"),
+      "source" => "env:BLACKCAT_TESTING_DEMO_WALLETS",
+    ],
+  ];
+
+  $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+  if (!is_string($json)) {
+    throw new RuntimeException("Unable to encode demo wallets JSON");
+  }
+
+  $tmp = $file . ".tmp-" . bin2hex(random_bytes(6));
+  file_put_contents($tmp, $json . "\n");
+  @chmod($tmp, 0640);
+  @chgrp($tmp, "www-data");
+  if (!@rename($tmp, $file)) {
+    @unlink($tmp);
+    throw new RuntimeException("Unable to move demo wallets file into place");
+  }
+
+  @chmod($file, 0640);
+  @chgrp($file, "www-data");
+
+  fwrite(STDERR, "[entrypoint] wrote demo wallets file: {$file}\n");
+'
 
 if [ "$ENABLE_SECRETS_AGENT" = "1" ]; then
   echo "[entrypoint] provisioning root-owned crypto key files (secrets-agent mode)" >&2

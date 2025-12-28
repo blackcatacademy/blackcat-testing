@@ -1,6 +1,8 @@
 services:
   app:
     read_only: true
+    security_opt:
+      - no-new-privileges:true
     tmpfs:
       - /tmp
       - /var/tmp
@@ -10,6 +12,8 @@ services:
 
   runner:
     read_only: true
+    security_opt:
+      - no-new-privileges:true
     tmpfs:
       - /tmp
       - /var/tmp
