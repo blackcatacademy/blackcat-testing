@@ -60,6 +60,19 @@ Presentation script:
 Hardening notes:
 - `docs/HARDENING_RECOMMENDATIONS.md`
 
+### Optional: tx-outbox relayer (broadcast to chain)
+
+The demo can optionally run a tx-outbox relayer (EOA) that broadcasts allowlisted tx intents.
+
+```bash
+RELAYER_PRIVATE_KEY=0x... \
+docker compose \
+  -f docker/minimal-prod/docker-compose.yml \
+  -f docker/minimal-prod/docker-compose.demo.yml \
+  -f docker/minimal-prod/docker-compose.relayer.yml \
+  up --build
+```
+
 ### Optional: hardened filesystem mode
 
 Runs the demo with a read-only container root filesystem and only `/etc/blackcat` + `/var/lib/blackcat` writable:

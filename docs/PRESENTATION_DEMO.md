@@ -181,6 +181,7 @@ The protected dashboard includes a `On-chain upgrade info` panel (via `GET /demo
 - `component_id`
 - the local `integrity_root` + policy hashes
 - the runtime-config attestation keys (v1 + v2) and their on-chain values/lock state
+- optional extra attestation keys/values (composer.lock / PHP fingerprint / image digest)
 
 Use it as a copy/paste source for Foundry scripts in `blackcat-kernel-contracts`.
 
@@ -206,6 +207,38 @@ docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --b
 Notes:
 - This creates **tx intents only**. Broadcasting requires an external relayer (EOA/Safe/KernelAuthority).
 - Intent payloads are anonymized (hashes + error codes only; no secret material).
+
+### Optional: tx-outbox relayer (EOA)
+
+This repo ships an **optional** relayer service that reads the tx-outbox and broadcasts allowlisted contract calls to
+your InstanceController (default allowlist: `reportIncident(bytes32)` + `checkIn(bytes32,bytes32,bytes32)`).
+
+Security note:
+- Never bake a private key into any image. Use a **dedicated demo EOA** and treat it as public/dev.
+- The relayer refuses non-HTTPS RPC endpoints by default.
+
+Run (dry-run, no broadcast):
+
+```bash
+RELAYER_DRY_RUN=1 \
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
+  up --build
+```
+
+Run (broadcast; provide a dedicated demo key via env):
+
+```bash
+# example: use your own funded demo key
+RELAYER_PRIVATE_KEY=0x... \
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
+  up --build
+```
 
 ## 4) Cleanup
 

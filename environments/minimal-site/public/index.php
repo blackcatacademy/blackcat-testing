@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use BlackCat\Config\Runtime\Config;
+use BlackCat\Config\Security\KernelAttestations;
 use BlackCat\Core\Database;
 use BlackCat\Core\Database\DbBootstrap;
 use BlackCat\Core\Kernel\HttpKernel;
@@ -782,6 +783,60 @@ HttpKernel::run(
                 'updated_at' => $ic->attestationUpdatedAt($controller, $attV2Key),
             ];
 
+            $composerLockKey = KernelAttestations::composerLockAttestationKeyV1();
+            $composerLockLocal = null;
+            $composerLockPath = rtrim($tk->integrityRootDir, "/\\") . DIRECTORY_SEPARATOR . 'composer.lock';
+            if (is_file($composerLockPath) && !is_link($composerLockPath) && is_readable($composerLockPath)) {
+                $raw = @file_get_contents($composerLockPath);
+                if (is_string($raw) && trim($raw) !== '') {
+                    /** @var mixed $decoded */
+                    $decoded = json_decode($raw, true);
+                    if (is_array($decoded)) {
+                        /** @var array<string,mixed> $decoded */
+                        $composerLockLocal = KernelAttestations::composerLockAttestationValueV1($decoded);
+                    }
+                }
+            }
+
+            $composerLockOnChain = [
+                'key' => $composerLockKey,
+                'value' => $ic->attestation($controller, $composerLockKey),
+                'locked' => $ic->attestationLocked($controller, $composerLockKey),
+                'updated_at' => $ic->attestationUpdatedAt($controller, $composerLockKey),
+            ];
+
+            $phpFingerprintKey = KernelAttestations::phpFingerprintAttestationKeyV1();
+            $phpFingerprintPayload = KernelAttestations::phpFingerprintPayloadV1();
+            $phpFingerprintLocal = KernelAttestations::phpFingerprintAttestationValueV1($phpFingerprintPayload);
+
+            $phpFingerprintOnChain = [
+                'key' => $phpFingerprintKey,
+                'value' => $ic->attestation($controller, $phpFingerprintKey),
+                'locked' => $ic->attestationLocked($controller, $phpFingerprintKey),
+                'updated_at' => $ic->attestationUpdatedAt($controller, $phpFingerprintKey),
+            ];
+
+            $imageDigestKey = KernelAttestations::imageDigestAttestationKeyV1();
+            $imageDigestLocal = null;
+            $imageDigestPath = '/etc/blackcat/image.digest';
+            if (is_file($imageDigestPath) && !is_link($imageDigestPath) && is_readable($imageDigestPath)) {
+                $raw = @file_get_contents($imageDigestPath);
+                if (is_string($raw) && trim($raw) !== '') {
+                    try {
+                        $imageDigestLocal = KernelAttestations::imageDigestAttestationValueV1($raw);
+                    } catch (\Throwable) {
+                        $imageDigestLocal = null;
+                    }
+                }
+            }
+
+            $imageDigestOnChain = [
+                'key' => $imageDigestKey,
+                'value' => $ic->attestation($controller, $imageDigestKey),
+                'locked' => $ic->attestationLocked($controller, $imageDigestKey),
+                'updated_at' => $ic->attestationUpdatedAt($controller, $imageDigestKey),
+            ];
+
             $payload = [
                 'ok' => true,
                 'controller' => $controller,
@@ -797,14 +852,31 @@ HttpKernel::run(
                     'runtime_config_value' => $tk->runtimeConfigCanonicalSha256,
                     'attestation_key_v1' => $attV1Key,
                     'attestation_key_v2' => $attV2Key,
+                    'composer_lock_path' => $composerLockPath,
+                    'composer_lock_value' => $composerLockLocal,
+                    'composer_lock_attestation_key' => $composerLockKey,
+                    'php_fingerprint_value' => $phpFingerprintLocal,
+                    'php_fingerprint_attestation_key' => $phpFingerprintKey,
+                    'php_fingerprint_meta' => [
+                        'php_version' => $phpFingerprintPayload['php_version'] ?? null,
+                        'php_sapi' => $phpFingerprintPayload['php_sapi'] ?? null,
+                        'extensions_count' => is_array($phpFingerprintPayload['extensions'] ?? null) ? count($phpFingerprintPayload['extensions']) : null,
+                    ],
+                    'image_digest_path' => $imageDigestPath,
+                    'image_digest_value' => $imageDigestLocal,
+                    'image_digest_attestation_key' => $imageDigestKey,
                 ],
                 'on_chain' => [
                     'attestation_v1' => $attV1,
                     'attestation_v2' => $attV2,
+                    'attestation_composer_lock_v1' => $composerLockOnChain,
+                    'attestation_php_fingerprint_v1' => $phpFingerprintOnChain,
+                    'attestation_image_digest_v1' => $imageDigestOnChain,
                 ],
                 'notes' => [
                     'To run a live upgrade demo, use blackcat-kernel-contracts Foundry scripts (publish release, set+lock attestation if needed, then propose+activate upgrade).',
                     'Use policy_hash_v3_strict_v2 if the v1 attestation key is already locked and the runtime config changed.',
+                    'Optional additional attestations (composer.lock / PHP fingerprint / image digest) provide deeper tamper resistance, but increase upgrade discipline (you must update+lock them on upgrades).',
                 ],
             ];
 

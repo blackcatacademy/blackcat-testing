@@ -105,3 +105,23 @@ Even with TrustKernel:
 - avoid co-locating secrets and untrusted write surfaces (FTP/SSH) when possible
 - disable/remove FTP immediately after install
 - keep `/etc/blackcat` root-owned and non-writable by the web runtime
+
+## Optional: additional on-chain attestations (higher discipline)
+
+The minimal kernel already binds:
+- integrity root + policy hash (InstanceController snapshot),
+- runtime config canonical hash (policy v3 attestation; recommended to lock).
+
+You can harden further by committing additional attestations (bytes32) to the InstanceController and locking them:
+- **composer.lock canonical hash** (`blackcat.composer.lock.canonical_sha256.v1`): detects dependency drift/tamper.
+- **PHP fingerprint** (`blackcat.php.fingerprint.canonical_sha256.v1`): detects “silent runtime change” (PHP/ext versions).
+- **image digest** (`blackcat.image.digest.sha256.v1`): detects container image swap (container platforms).
+
+Tradeoff:
+- Extremely strong provenance, but upgrades require discipline (you must update+lock attestations when changing runtime/deps/images).
+
+Helpers:
+- `blackcat-config/bin/config runtime:doctor` prints best-effort computed attestation keys/values (and warnings if missing).
+- `blackcat-config/bin/config runtime:attestation:composer-lock`
+- `blackcat-config/bin/config runtime:attestation:php-fingerprint`
+- `blackcat-config/bin/config runtime:attestation:image-digest`

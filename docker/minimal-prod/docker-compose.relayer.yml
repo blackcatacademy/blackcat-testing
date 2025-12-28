@@ -1,0 +1,29 @@
+services:
+  relayer:
+    build:
+      context: ../../..
+      dockerfile: blackcat-testing/docker/minimal-prod/relayer/Dockerfile
+    environment:
+      RELAYER_PRIVATE_KEY: "${RELAYER_PRIVATE_KEY:-}"
+      RELAYER_PRIVATE_KEY_FILE: "${RELAYER_PRIVATE_KEY_FILE:-}"
+      RELAYER_POLL_INTERVAL_SEC: "${RELAYER_POLL_INTERVAL_SEC:-2}"
+      RELAYER_MAX_TX_PER_TICK: "${RELAYER_MAX_TX_PER_TICK:-3}"
+      RELAYER_DRY_RUN: "${RELAYER_DRY_RUN:-0}"
+      RELAYER_ALLOWED_METHODS: "${RELAYER_ALLOWED_METHODS:-reportIncident(bytes32),checkIn(bytes32,bytes32,bytes32)}"
+      RELAYER_ALLOW_HTTP_LOCALHOST: "${RELAYER_ALLOW_HTTP_LOCALHOST:-0}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    user: "33:33" # www-data
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    volumes:
+      - blackcat_etc:/etc/blackcat:ro
+      - blackcat_var:/var/lib/blackcat
+    depends_on:
+      app:
+        condition: service_started
+
