@@ -17,6 +17,7 @@ Endpoints (intentionally tiny):
 - `GET /db/read` — tries a DB read via `BlackCat\Core\Database` wrapper.
 - `GET /bypass/pdo` — attempts to access raw PDO (must be denied by TrustKernel guard).
 - `GET /bypass/keys` — attempts to read a key file directly (must be denied by OS permissions in secrets-agent mode).
+- `GET /bypass/db-creds` — attempts to read the root-owned DB credentials file (must be denied by OS permissions in secrets-agent mode).
 - `GET /bypass/agent` — attempts to bypass TrustKernel by calling the secrets-agent socket directly (must be denied when `read_allowed=false`).
 - `POST /crypto/roundtrip` — crypto demo (encrypt+decrypt, must still be guarded by TrustKernel `secrets.read`).
 

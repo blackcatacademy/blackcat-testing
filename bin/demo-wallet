@@ -4,9 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT_DIR}/var/demo"
 
-WALLET_JSON="${OUT_DIR}/demo.operator.wallet.json"
-WALLET_ENV="${OUT_DIR}/demo.operator.env"
-WALLETS_PUBLIC="${OUT_DIR}/demo.wallets.public.json"
+PRIVATE_DIR="${OUT_DIR}/private"
+PUBLIC_DIR="${OUT_DIR}/public"
+
+WALLET_JSON="${PRIVATE_DIR}/demo.operator.wallet.json"
+WALLET_ENV="${PRIVATE_DIR}/demo.operator.env"
+WALLETS_PUBLIC="${PUBLIC_DIR}/demo.wallets.public.json"
 
 CHAIN_ID="${BLACKCAT_TRUST_CHAIN_ID:-4207}"
 RPC_URL="${BLACKCAT_TRUST_RPC_URL:-https://rpc.layeredge.io}"
@@ -39,7 +42,7 @@ read_wallet() {
 }
 
 init_wallet() {
-  mkdir -p "$OUT_DIR"
+  mkdir -p "$PRIVATE_DIR" "$PUBLIC_DIR"
 
   if [ -f "$WALLET_JSON" ]; then
     echo "[demo-wallet] already exists: ${WALLET_JSON}" >&2

@@ -174,6 +174,13 @@ HttpKernel::run(
         echo '<pre id="errorsBox" style="display:none"></pre>';
 
         echo '<details><summary>Raw /health JSON</summary><pre id="healthRaw">{"loading":true}</pre></details>';
+        echo '<details><summary>Presentation script (secure vs unprotected)</summary><pre>';
+        echo '1) Open the unprotected demo and click: leak key + leak DB creds' . "\n";
+        echo '2) Back here: run the protected probes (key/db/agent) and see they are denied' . "\n";
+        echo '3) While trusted: DB write works, crypto works' . "\n";
+        echo '4) Wait for the scheduled tamper and watch the kernel fail-closed (writes blocked)' . "\n";
+        echo '5) Optional: use the on-chain panel + Foundry runbooks to demo upgrade flows' . "\n";
+        echo '</pre></details>';
         echo '<p class="muted">This page is intentionally allowed even when strict mode denies reads, so you can observe failures. It does not expose local filesystem details.</p>';
         echo '</div>';
 
@@ -198,8 +205,18 @@ HttpKernel::run(
         echo '<p class="muted">Expected in strict mode: writes denied when <span class="k">write_allowed=false</span>, reads denied when <span class="k">read_allowed=false</span>, and the PDO bypass probe is always denied.</p>';
         echo '</div>';
 
-        echo '<div class="card"><div class="row"><button id="btnCrypto">Crypto roundtrip</button><button id="btnKeyBypass">Probe key file read</button><button id="btnAgentBypass">Probe secrets-agent</button></div>';
-        echo '<p class="muted">Secrets-agent mode: key files must not be readable by the web runtime, but crypto operations can still work through the agent (and the agent also enforces TrustKernel).</p>';
+        echo '<div class="card"><div class="row"><button id="btnCrypto">Crypto roundtrip</button><button id="btnKeyBypass">Probe key file read</button><button id="btnDbCredsBypass">Probe DB creds file read</button><button id="btnAgentBypass">Probe secrets-agent</button></div>';
+        echo '<p class="muted">Secrets-agent mode: key files and DB credential files must not be readable by the web runtime, but crypto/DB can still work through the agent (and the agent also enforces TrustKernel).</p>';
+        echo '</div>';
+
+        echo '<div class="card">';
+        echo '<div class="row" style="justify-content:space-between">';
+        echo '<div class="row"><span class="pill"><strong>Guided comparison</strong></span><span class="pill">secure vs unprotected</span></div>';
+        echo '<div class="row"><button id="btnOpenInsecureHome">Open unprotected</button><button id="btnOpenInsecureLeakKey">Unprotected: leak key</button><button id="btnOpenInsecureLeakDb">Unprotected: leak DB creds</button><button id="btnOpenInsecureRead">Unprotected: DB read</button></div>';
+        echo '</div>';
+        echo '<p class="muted" style="margin-top:10px">';
+        echo 'Suggested demo flow: (1) open the unprotected site and click leak endpoints, (2) run the protected probes above (key/db/agent), (3) wait for a tamper event and observe the kernel fail-closed.';
+        echo '</p>';
         echo '</div>';
 
         echo '</div></div>';
@@ -384,10 +401,23 @@ HttpKernel::run(
           $("btnBypass").addEventListener("click", () => call("/bypass/pdo", "GET"));
 	          $("btnCrypto").addEventListener("click", () => call("/crypto/roundtrip", "POST"));
 	          $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
+            $("btnDbCredsBypass").addEventListener("click", () => call("/bypass/db-creds", "GET"));
 	          $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
             $("btnRefreshWallets").addEventListener("click", () => refreshWallets(true));
             $("btnRefreshUpgrade").addEventListener("click", () => refreshUpgrade(true));
 	          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
+
+          const insecureBase = insecureUrl.replace(/\\/+$/, "");
+          const openInsecure = (path) => {
+            const p = typeof path === "string" ? path : "/";
+            const url = insecureBase + (p.startsWith("/") ? p : ("/" + p));
+            window.open(url, "_blank", "noopener");
+          };
+
+          $("btnOpenInsecureHome").addEventListener("click", () => openInsecure("/"));
+          $("btnOpenInsecureLeakKey").addEventListener("click", () => openInsecure("/leak/key"));
+          $("btnOpenInsecureLeakDb").addEventListener("click", () => openInsecure("/leak/db"));
+          $("btnOpenInsecureRead").addEventListener("click", () => openInsecure("/db/read"));
 
           $("btnTraffic").addEventListener("click", () => {
             if (trafficTimer) {
@@ -737,6 +767,34 @@ HttpKernel::run(
             $raw = @file_get_contents($path);
             if (is_string($raw) && strlen($raw) > 0) {
                 $sendText(500, 'unexpected: key file readable (' . strlen($raw) . ' bytes)');
+                return;
+            }
+
+            $sendText(403, 'denied');
+            return;
+        } catch (\Throwable) {
+            $sendText(500, 'error');
+            return;
+        }
+    }
+
+    if ($path === '/bypass/db-creds') {
+        try {
+            $file = Config::get('db.credentials_file');
+            if (!is_string($file) || trim($file) === '') {
+                $sendText(404, 'db.credentials_file not configured');
+                return;
+            }
+
+            $file = trim($file);
+            if ($file === '' || str_contains($file, "\0")) {
+                $sendText(500, 'invalid db.credentials_file path');
+                return;
+            }
+
+            $raw = @file_get_contents($file);
+            if (is_string($raw) && strlen($raw) > 0) {
+                $sendText(500, 'unexpected: db credentials file readable (' . strlen($raw) . ' bytes)');
                 return;
             }
 

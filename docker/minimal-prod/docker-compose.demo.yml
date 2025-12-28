@@ -4,7 +4,7 @@ services:
       BLACKCAT_TESTING_INSECURE_URL: "${BLACKCAT_TESTING_INSECURE_URL:-http://localhost:8089/}"
       BLACKCAT_TESTING_DEMO_WALLETS_FILE: "${BLACKCAT_TESTING_DEMO_WALLETS_FILE:-/mnt/blackcat-demo/demo.wallets.public.json}"
     volumes:
-      - ../../var/demo:/mnt/blackcat-demo:ro
+      - ../../var/demo/public:/mnt/blackcat-demo:ro
 
   insecure:
     build:

@@ -20,9 +20,17 @@ Optional: create a dedicated **demo operator wallet** (addresses are shown on th
 blackcat-testing/bin/demo-wallet init
 ```
 
+This writes:
+- private (gitignored): `blackcat-testing/var/demo/private/`
+- public addresses (gitignored, safe to mount): `blackcat-testing/var/demo/public/demo.wallets.public.json`
+
 Fund it with ~`0.1` EDGEN (recommended for live upgrade/audit demos), then restart the stack so the wallet list refreshes:
 
 ```bash
+blackcat-testing/bin/demo-wallet show
+# send 0.1 EDGEN to the address shown above (or fund from a local env key):
+# FUNDER_PRIVATE_KEY=0x... blackcat-testing/bin/demo-wallet fund 0.1
+
 docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
@@ -72,6 +80,24 @@ The container writes `/etc/blackcat/demo.wallets.public.json` (addresses only). 
   - security policy hash
   - runtime-config commitment (policy v3)
 - If anything important diverges, the kernel fails closed and blocks sensitive operations.
+
+## 2.1) Guided demo script (secure vs unprotected)
+
+1. Open the **unprotected** demo (`http://localhost:8089/`) and click:
+   - `Leak key file` (shows exfiltration risk without a secrets boundary)
+   - `Leak DB creds` (shows why env-based secrets are dangerous)
+2. Open the **protected** demo (`http://localhost:8088/`) and click:
+   - `Probe key file read` → must be denied (OS permissions)
+   - `Probe DB creds file read` → must be denied (OS permissions)
+   - `Probe secrets-agent` → denied when `read_allowed=false` (TrustKernel enforced inside the agent)
+3. While `trusted_now=true`, show:
+   - `DB write` works
+   - `Crypto roundtrip` works
+4. Wait for the scheduled tamper (default `40s`) and observe:
+   - `trusted_now` flips to `false`
+   - `write_allowed=false` immediately blocks writes
+   - errors show *why* it failed (transparent, auditable)
+5. Optional (operator-driven): use `On-chain upgrade info` + Foundry runbooks to show “audit + upgrade”.
 
 ## 3) Run scenarios (live tamper)
 
