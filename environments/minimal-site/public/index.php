@@ -805,9 +805,9 @@ HttpKernel::run(
                 'updated_at' => $ic->attestationUpdatedAt($controller, $composerLockKey),
             ];
 
-            $phpFingerprintKey = KernelAttestations::phpFingerprintAttestationKeyV1();
-            $phpFingerprintPayload = KernelAttestations::phpFingerprintPayloadV1();
-            $phpFingerprintLocal = KernelAttestations::phpFingerprintAttestationValueV1($phpFingerprintPayload);
+            $phpFingerprintKey = KernelAttestations::phpFingerprintAttestationKeyV2();
+            $phpFingerprintPayload = KernelAttestations::phpFingerprintPayloadV2();
+            $phpFingerprintLocal = KernelAttestations::phpFingerprintAttestationValueV2($phpFingerprintPayload);
 
             $phpFingerprintOnChain = [
                 'key' => $phpFingerprintKey,
@@ -849,6 +849,10 @@ HttpKernel::run(
                     'policy_hash_v3_warn' => $tk->policyHashV3Warn,
                     'policy_hash_v3_strict_v2' => $tk->policyHashV3StrictV2,
                     'policy_hash_v3_warn_v2' => $tk->policyHashV3WarnV2,
+                    'policy_hash_v4_strict' => $tk->policyHashV4Strict,
+                    'policy_hash_v4_warn' => $tk->policyHashV4Warn,
+                    'policy_hash_v4_strict_v2' => $tk->policyHashV4StrictV2,
+                    'policy_hash_v4_warn_v2' => $tk->policyHashV4WarnV2,
                     'runtime_config_value' => $tk->runtimeConfigCanonicalSha256,
                     'attestation_key_v1' => $attV1Key,
                     'attestation_key_v2' => $attV2Key,
@@ -859,10 +863,10 @@ HttpKernel::run(
                     'php_fingerprint_attestation_key' => $phpFingerprintKey,
                     'php_fingerprint_meta' => [
                         'php_version' => $phpFingerprintPayload['php_version'] ?? null,
-                        'php_sapi' => $phpFingerprintPayload['php_sapi'] ?? null,
                         'extensions_count' => is_array($phpFingerprintPayload['extensions'] ?? null) ? count($phpFingerprintPayload['extensions']) : null,
                     ],
                     'image_digest_path' => $imageDigestPath,
+                    'image_digest_config_path' => $tk->imageDigestFilePath,
                     'image_digest_value' => $imageDigestLocal,
                     'image_digest_attestation_key' => $imageDigestKey,
                 ],

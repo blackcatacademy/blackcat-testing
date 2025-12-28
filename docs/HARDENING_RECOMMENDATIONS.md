@@ -114,7 +114,7 @@ The minimal kernel already binds:
 
 You can harden further by committing additional attestations (bytes32) to the InstanceController and locking them:
 - **composer.lock canonical hash** (`blackcat.composer.lock.canonical_sha256.v1`): detects dependency drift/tamper.
-- **PHP fingerprint** (`blackcat.php.fingerprint.canonical_sha256.v1`): detects “silent runtime change” (PHP/ext versions).
+- **PHP fingerprint** (`blackcat.php.fingerprint.canonical_sha256.v2`): detects “silent runtime change” (PHP/ext versions).
 - **image digest** (`blackcat.image.digest.sha256.v1`): detects container image swap (container platforms).
 
 Tradeoff:

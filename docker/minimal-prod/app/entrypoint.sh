@@ -76,6 +76,7 @@ php -r '
       "integrity" => [
         "root_dir" => $rootDir,
         "manifest" => $manifestPath,
+        "image_digest_file" => "/etc/blackcat/image.digest",
       ],
       "web3" => [
         "chain_id" => (int) getenv("CHAIN_ID"),

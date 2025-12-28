@@ -179,7 +179,7 @@ docker compose \
 
 The protected dashboard includes a `On-chain upgrade info` panel (via `GET /demo/upgrade-info`) that prints:
 - `component_id`
-- the local `integrity_root` + policy hashes
+- the local `integrity_root` + policy hashes (v3 + v4)
 - the runtime-config attestation keys (v1 + v2) and their on-chain values/lock state
 - optional extra attestation keys/values (composer.lock / PHP fingerprint / image digest)
 
