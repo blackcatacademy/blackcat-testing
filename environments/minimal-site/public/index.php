@@ -27,7 +27,14 @@ if (!is_string($path) || $path === '') {
 // Allow a small monitoring endpoint even when strict mode is denying reads.
 // This endpoint must remain read-only and must not expose secrets.
 $opts = new HttpKernelOptions();
-if ($path === '/health' || $path === '/health/debug' || $path === '/' || $path === '/demo' || $path === '/demo/wallets') {
+if (
+    $path === '/health'
+    || $path === '/health/debug'
+    || $path === '/'
+    || $path === '/demo'
+    || $path === '/demo/wallets'
+    || $path === '/demo/tx-outbox'
+) {
     $opts->checkTrustOnRequest = false;
 }
 
@@ -193,6 +200,14 @@ HttpKernel::run(
         echo '</div>';
 
         echo '<div class="card"><div class="row" style="justify-content:space-between">';
+        echo '<div class="row"><span class="pill"><strong>Tx outbox</strong></span><span class="pill">anonymized on-chain signals</span></div>';
+        echo '<div class="row"><button id="btnRefreshOutbox">Refresh</button></div>';
+        echo '</div>';
+        echo '<pre id="outboxBox">{"loading":true}</pre>';
+        echo '<p class="muted">The trust-runner writes anonymized <span class="k">tx intents</span> here (incident reports by default; check-ins optional). A separate relayer can broadcast them to the chain (optional).</p>';
+        echo '</div>';
+
+        echo '<div class="card"><div class="row" style="justify-content:space-between">';
         echo '<div class="row"><span class="pill"><strong>On-chain upgrade info</strong></span><span class="pill">read-gated in strict mode</span></div>';
         echo '<div class="row"><button id="btnRefreshUpgrade">Refresh</button></div>';
         echo '</div>';
@@ -255,6 +270,8 @@ HttpKernel::run(
 		          let trafficTick = 0;
 	              let walletsInFlight = false;
 	              let lastWalletsAt = 0;
+                let outboxInFlight = false;
+                let lastOutboxAt = 0;
                 let upgradeInFlight = false;
                 let lastUpgradeAt = 0;
 
@@ -303,6 +320,24 @@ HttpKernel::run(
                 $("tokenSymbol").textContent = "EDGEN";
               } finally {
                 walletsInFlight = false;
+              }
+            }
+
+            async function refreshOutbox(force = false) {
+              const now = Date.now();
+              if (!force && outboxInFlight) return;
+              if (!force && (now - lastOutboxAt) < 2000) return;
+              outboxInFlight = true;
+              lastOutboxAt = now;
+
+              try {
+                const res = await fetch("/demo/tx-outbox", {cache:"no-store"});
+                const text = await res.text();
+                $("outboxBox").textContent = text.trim() !== "" ? text : "{}";
+              } catch (e) {
+                $("outboxBox").textContent = "[outbox] fetch failed";
+              } finally {
+                outboxInFlight = false;
               }
             }
 
@@ -402,8 +437,9 @@ HttpKernel::run(
 	          $("btnCrypto").addEventListener("click", () => call("/crypto/roundtrip", "POST"));
 	          $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
             $("btnDbCredsBypass").addEventListener("click", () => call("/bypass/db-creds", "GET"));
-	          $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
+            $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
             $("btnRefreshWallets").addEventListener("click", () => refreshWallets(true));
+            $("btnRefreshOutbox").addEventListener("click", () => refreshOutbox(true));
             $("btnRefreshUpgrade").addEventListener("click", () => refreshUpgrade(true));
 	          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
 
@@ -451,9 +487,11 @@ HttpKernel::run(
 
 	          refresh();
             refreshWallets(true);
+            refreshOutbox(true);
             refreshUpgrade(true);
 	          setInterval(refresh, 1000);
             setInterval(() => refreshWallets(false), 5000);
+            setInterval(() => refreshOutbox(false), 2000);
             setInterval(() => refreshUpgrade(false), 10000);
 	        </script>';
 
@@ -611,6 +649,81 @@ HttpKernel::run(
             'rpc_ok' => $rpcOk,
             'wallets' => $outWallets,
             'error' => $rpcError,
+        ]);
+        return;
+    }
+
+    if ($path === '/demo/tx-outbox') {
+        $dir = null;
+
+        try {
+            $raw = Config::get('trust.web3.tx_outbox_dir');
+            if (is_string($raw) && trim($raw) !== '') {
+                $dir = Config::repo()->resolvePath(trim($raw));
+            }
+        } catch (\Throwable) {
+            $dir = null;
+        }
+
+        if (!is_string($dir) || trim($dir) === '' || str_contains($dir, "\0")) {
+            $sendJson(200, ['ok' => false, 'error' => 'tx_outbox_not_configured', 'items' => []]);
+            return;
+        }
+
+        $dir = trim($dir);
+        if (!is_dir($dir) || is_link($dir) || !is_readable($dir)) {
+            $sendJson(200, ['ok' => false, 'error' => 'tx_outbox_unavailable', 'items' => []]);
+            return;
+        }
+
+        $files = glob(rtrim($dir, '/\\') . '/*.json') ?: [];
+        rsort($files);
+
+        $items = [];
+        foreach ($files as $file) {
+            if (!is_string($file) || trim($file) === '' || str_contains($file, "\0")) {
+                continue;
+            }
+            if (!is_file($file) || is_link($file) || !is_readable($file)) {
+                continue;
+            }
+
+            $base = basename($file);
+            if ($base === '' || str_contains($base, "\0")) {
+                continue;
+            }
+
+            $raw = @file_get_contents($file, false, null, 0, 64 * 1024);
+            if (!is_string($raw) || trim($raw) === '') {
+                continue;
+            }
+
+            /** @var mixed $decoded */
+            $decoded = json_decode($raw, true);
+            if (!is_array($decoded)) {
+                continue;
+            }
+
+            $items[] = [
+                'file' => $base,
+                'type' => $decoded['type'] ?? null,
+                'created_at' => $decoded['created_at'] ?? null,
+                'to' => $decoded['to'] ?? null,
+                'method' => $decoded['method'] ?? null,
+                'args' => $decoded['args'] ?? null,
+                'meta' => $decoded['meta'] ?? null,
+            ];
+
+            if (count($items) >= 20) {
+                break;
+            }
+        }
+
+        $sendJson(200, [
+            'ok' => true,
+            'count' => count($items),
+            'items' => $items,
+            'note' => 'These are tx intents only; broadcasting requires an external relayer (EOA/Safe/KernelAuthority).',
         ]);
         return;
     }

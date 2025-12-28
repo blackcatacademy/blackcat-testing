@@ -34,6 +34,11 @@ Recommended baseline:
 - writable mounts: only `/etc/blackcat` (runtime config, sockets) and `/var/lib/blackcat` (optional state/outboxes)
 - tmpfs: `/tmp`, `/var/tmp`
 
+Tx outbox note (optional, recommended):
+- configure `trust.web3.tx_outbox_dir` (default demo path: `/var/lib/blackcat/tx-outbox`)
+- permission model should allow the web/runner user to write without making the directory world-writable
+  (example: `root:www-data 0770`)
+
 Demo helper:
 - `docker/minimal-prod/docker-compose.hardened-fs.yml`
 

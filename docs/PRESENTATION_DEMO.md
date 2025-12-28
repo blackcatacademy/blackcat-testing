@@ -62,6 +62,7 @@ The dashboard shows:
 - `trusted_now`, `read_allowed`, `write_allowed`
 - on-chain `active_root` + `active_policy_hash`
 - the current failure reason (`error_codes` / `errors`) when the system fails closed
+- a `Tx outbox` panel (`GET /demo/tx-outbox`) with anonymized tx intents (incident reports; optional check-ins)
 
 Optional:
 - Debug status (not for monitoring): `http://localhost:8088/health/debug`
@@ -108,6 +109,7 @@ Compatibility note:
    - `trusted_now` flips to `false`
    - `write_allowed=false` immediately blocks writes
    - errors show *why* it failed (transparent, auditable)
+   - the `Tx outbox` panel queues an anonymized `reportIncident(bytes32)` intent (ready for an external relayer)
 5. Optional (operator-driven): use `On-chain upgrade info` + Foundry runbooks to show “audit + upgrade”.
 
 ## 3) Run scenarios (live tamper)
@@ -189,6 +191,21 @@ Recommended operator runbooks:
 Security note:
 - Do **not** bake your main authority private key into any image.
 - For presentations, use a dedicated funded EOA and a dedicated demo InstanceController (treat it as public/dev).
+
+## 3.3) Optional: on-chain “check-ins” + incident reports (tx outbox)
+
+By default, the runner will queue an anonymized incident report when trust fails (into `trust.web3.tx_outbox_dir`).
+
+If you also want periodic on-chain check-ins (positive “I am healthy” signals), set:
+
+```bash
+BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC=60 \
+docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
+```
+
+Notes:
+- This creates **tx intents only**. Broadcasting requires an external relayer (EOA/Safe/KernelAuthority).
+- Intent payloads are anonymized (hashes + error codes only; no secret material).
 
 ## 4) Cleanup
 

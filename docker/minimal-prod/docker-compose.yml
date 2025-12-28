@@ -45,6 +45,7 @@ services:
       - "127.0.0.1:8088:8080"
     volumes:
       - blackcat_etc:/etc/blackcat
+      - blackcat_var:/var/lib/blackcat
     depends_on:
       db:
         condition: service_healthy
@@ -58,6 +59,7 @@ services:
       BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC: "${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
     volumes:
       - blackcat_etc:/etc/blackcat
+      - blackcat_var:/var/lib/blackcat
     depends_on:
       app:
         condition: service_started
@@ -89,3 +91,4 @@ services:
 
 volumes:
   blackcat_etc: {}
+  blackcat_var: {}

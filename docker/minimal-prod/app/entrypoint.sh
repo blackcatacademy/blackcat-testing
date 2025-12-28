@@ -20,6 +20,11 @@ DEMO_WALLETS_FILE="${BLACKCAT_TESTING_DEMO_WALLETS_FILE:-}"
 mkdir -p /etc/blackcat
 chmod 0750 /etc/blackcat || true
 
+mkdir -p /var/lib/blackcat/tx-outbox || true
+chmod 0750 /var/lib/blackcat || true
+chmod 0770 /var/lib/blackcat/tx-outbox || true
+chgrp -R www-data /var/lib/blackcat >/dev/null 2>&1 || true
+
 ROOT_DIR="/srv/blackcat"
 MANIFEST_PATH="/etc/blackcat/integrity.manifest.json"
 CONFIG_PATH="/etc/blackcat/config.runtime.json"
@@ -82,6 +87,7 @@ php -r '
         "contracts" => [
           "instance_controller" => (string) getenv("INSTANCE_CONTROLLER"),
         ],
+        "tx_outbox_dir" => "/var/lib/blackcat/tx-outbox",
       ],
     ],
   ];
