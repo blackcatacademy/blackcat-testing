@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUT_DIR="${ROOT_DIR}/var/demo"
+
+WALLET_JSON="${OUT_DIR}/demo.operator.wallet.json"
+WALLET_ENV="${OUT_DIR}/demo.operator.env"
+WALLETS_PUBLIC="${OUT_DIR}/demo.wallets.public.json"
+
+CHAIN_ID="${BLACKCAT_TRUST_CHAIN_ID:-4207}"
+RPC_URL="${BLACKCAT_TRUST_RPC_URL:-https://rpc.layeredge.io}"
+EXPLORER_BASE="${BLACKCAT_TRUST_EXPLORER_BASE:-https://edgenscan.io}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bin/demo-wallet init          Generate a new demo operator wallet (local, gitignored)
+  bin/demo-wallet show          Print the demo operator address (and best-effort balance)
+  bin/demo-wallet fund <amount> Fund the demo operator wallet (requires FUNDER_PRIVATE_KEY)
+
+Notes:
+- Private keys are stored locally under blackcat-testing/var/demo (gitignored).
+- Never commit or bake private keys into images.
+EOF
+}
+
+ensure_foundry_cast() {
+  # Uses Foundry Docker image so the host does not need Foundry installed.
+  docker image inspect ghcr.io/foundry-rs/foundry:stable >/dev/null 2>&1 || true
+}
+
+read_wallet() {
+  if [ ! -f "$WALLET_JSON" ]; then
+    echo "[demo-wallet] missing wallet file: ${WALLET_JSON}" >&2
+    echo "[demo-wallet] run: bin/demo-wallet init" >&2
+    exit 2
+  fi
+}
+
+init_wallet() {
+  mkdir -p "$OUT_DIR"
+
+  if [ -f "$WALLET_JSON" ]; then
+    echo "[demo-wallet] already exists: ${WALLET_JSON}" >&2
+    return 0
+  fi
+
+  ensure_foundry_cast
+
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' EXIT
+
+  docker run --rm --entrypoint cast ghcr.io/foundry-rs/foundry:stable wallet new --json > "$tmp"
+
+  TMP_JSON="$tmp" OUT_JSON="$WALLET_JSON" OUT_ENV="$WALLET_ENV" OUT_PUBLIC="$WALLETS_PUBLIC" python3 - <<'PY'
+import json, os, sys
+
+tmp = os.environ["TMP_JSON"]
+out_json = os.environ["OUT_JSON"]
+out_env = os.environ["OUT_ENV"]
+out_public = os.environ["OUT_PUBLIC"]
+
+with open(tmp, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+    raise SystemExit("Unexpected cast wallet output JSON")
+
+addr = data[0].get("address")
+pk = data[0].get("private_key")
+if not isinstance(addr, str) or not addr.startswith("0x") or len(addr) != 42:
+    raise SystemExit("Invalid address in cast output")
+if not isinstance(pk, str) or not pk.startswith("0x") or len(pk) != 66:
+    raise SystemExit("Invalid private_key in cast output")
+
+with open(out_json, "w", encoding="utf-8") as f:
+    json.dump({"address": addr, "private_key": pk}, f, indent=2)
+    f.write("\n")
+
+with open(out_env, "w", encoding="utf-8") as f:
+    f.write("DEMO_OPERATOR_ADDRESS=%s\n" % addr)
+    f.write("DEMO_OPERATOR_PRIVATE_KEY=%s\n" % pk)
+
+with open(out_public, "w", encoding="utf-8") as f:
+    json.dump({"wallets": [{"label": "demo-operator", "address": addr}]}, f, indent=2)
+    f.write("\n")
+
+print(addr)
+PY
+
+  chmod 0600 "$WALLET_JSON" "$WALLET_ENV" || true
+  chmod 0640 "$WALLETS_PUBLIC" || true
+
+  addr="$(python3 - <<PY
+import json
+with open("${WALLET_JSON}", "r", encoding="utf-8") as f:
+    d=json.load(f)
+print(d["address"])
+PY
+)"
+
+  echo "[demo-wallet] created:"
+  echo "  - ${WALLET_ENV}"
+  echo "  - ${WALLET_JSON}"
+  echo "  - ${WALLETS_PUBLIC} (addresses only)"
+  echo ""
+  echo "[demo-wallet] demo operator address: ${addr}"
+  echo "[demo-wallet] send ~0.1 EDGEN to: ${addr}"
+  echo "[demo-wallet] explorer: ${EXPLORER_BASE%/}/address/${addr}"
+}
+
+show_wallet() {
+  read_wallet
+  addr="$(python3 - <<PY
+import json
+with open("${WALLET_JSON}", "r", encoding="utf-8") as f:
+    d=json.load(f)
+print(d["address"])
+PY
+)"
+
+  echo "[demo-wallet] address: ${addr}"
+
+  # Best-effort balance read (requires reachable RPC).
+  docker run --rm --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
+    balance "${addr}" --rpc-url "${RPC_URL}" --chain-id "${CHAIN_ID}" >/dev/null 2>&1 \
+    && docker run --rm --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
+      balance "${addr}" --rpc-url "${RPC_URL}" --chain-id "${CHAIN_ID}" \
+    || echo "[demo-wallet] balance: (rpc not available)"
+}
+
+fund_wallet() {
+  if [ $# -ne 1 ]; then
+    echo "[demo-wallet] missing amount" >&2
+    usage >&2
+    exit 2
+  fi
+
+  read_wallet
+
+  amount="$1"
+  if [[ "$amount" == "" ]]; then
+    echo "[demo-wallet] invalid amount" >&2
+    exit 2
+  fi
+
+  if [ -z "${FUNDER_PRIVATE_KEY:-}" ]; then
+    echo "[demo-wallet] set FUNDER_PRIVATE_KEY=0x... to fund the demo wallet" >&2
+    exit 2
+  fi
+
+  addr="$(python3 - <<PY
+import json
+with open("${WALLET_JSON}", "r", encoding="utf-8") as f:
+    d=json.load(f)
+print(d["address"])
+PY
+)"
+
+  echo "[demo-wallet] funding ${addr} with ${amount} ether on chain_id=${CHAIN_ID} via ${RPC_URL}"
+
+  docker run --rm --entrypoint cast ghcr.io/foundry-rs/foundry:stable \
+    send --private-key "${FUNDER_PRIVATE_KEY}" --rpc-url "${RPC_URL}" --chain-id "${CHAIN_ID}" \
+    "${addr}" --value "${amount}ether"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  init)
+    init_wallet
+    ;;
+  show)
+    show_wallet
+    ;;
+  fund)
+    shift
+    fund_wallet "$@"
+    ;;
+  -h|--help|help|"")
+    usage
+    ;;
+  *)
+    echo "[demo-wallet] unknown command: ${cmd}" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

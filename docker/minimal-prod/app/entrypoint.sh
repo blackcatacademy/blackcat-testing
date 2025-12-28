@@ -15,6 +15,7 @@ TAMPER_KIND="${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
 RPC_SABOTAGE_AFTER_SEC="${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
 
 DEMO_WALLETS="${BLACKCAT_TESTING_DEMO_WALLETS:-}"
+DEMO_WALLETS_FILE="${BLACKCAT_TESTING_DEMO_WALLETS_FILE:-}"
 
 mkdir -p /etc/blackcat
 chmod 0750 /etc/blackcat || true
@@ -51,6 +52,7 @@ export DB_DSN DB_USER DB_PASS
 export DB_RO_USER DB_RO_PASS
 export ENABLE_SECRETS_AGENT
 export DEMO_WALLETS
+export DEMO_WALLETS_FILE
 
 php -r '
   $force = getenv("FORCE_PROVISION") === "1";
@@ -166,6 +168,7 @@ php -r '
 
   $file = "/etc/blackcat/demo.wallets.public.json";
   $walletsRaw = (string) getenv("DEMO_WALLETS");
+  $walletsFile = (string) getenv("DEMO_WALLETS_FILE");
 
   if ($noReprovision || trim($walletsRaw) === "") {
     exit(0);
@@ -229,6 +232,116 @@ php -r '
   @chgrp($file, "www-data");
 
   fwrite(STDERR, "[entrypoint] wrote demo wallets file: {$file}\n");
+'
+
+php -r '
+  $force = getenv("FORCE_PROVISION") === "1";
+  $noReprovisionMarker = getenv("NO_REPROVISION_MARKER") ?: "";
+  $noReprovision = !$force && is_string($noReprovisionMarker) && $noReprovisionMarker !== "" && file_exists($noReprovisionMarker);
+
+  $dst = "/etc/blackcat/demo.wallets.public.json";
+  $walletsRaw = (string) getenv("DEMO_WALLETS");
+  $src = (string) getenv("DEMO_WALLETS_FILE");
+
+  if ($noReprovision) {
+    exit(0);
+  }
+
+  // Prefer explicit env list. If not provided, attempt to load a public wallets file.
+  if (trim($walletsRaw) !== "") {
+    exit(0);
+  }
+
+  $src = trim($src);
+  if ($src === "" || str_contains($src, "\0")) {
+    exit(0);
+  }
+  if (!is_file($src) || is_link($src) || !is_readable($src)) {
+    exit(0);
+  }
+
+  $raw = @file_get_contents($src);
+  if (!is_string($raw) || trim($raw) === "") {
+    fwrite(STDERR, "[entrypoint] WARN: demo wallets file is empty: {$src}\n");
+    exit(0);
+  }
+
+  /** @var mixed $decoded */
+  $decoded = json_decode($raw, true);
+  if (!is_array($decoded)) {
+    fwrite(STDERR, "[entrypoint] WARN: demo wallets file is not valid JSON: {$src}\n");
+    exit(0);
+  }
+
+  $items = isset($decoded["wallets"]) && is_array($decoded["wallets"]) ? $decoded["wallets"] : $decoded;
+  if (!is_array($items)) {
+    fwrite(STDERR, "[entrypoint] WARN: demo wallets file has no wallets array: {$src}\n");
+    exit(0);
+  }
+
+  $wallets = [];
+  foreach ($items as $i => $w) {
+    $addr = null;
+    $label = null;
+    if (is_string($w)) {
+      $addr = $w;
+    } elseif (is_array($w)) {
+      $addr = $w["address"] ?? null;
+      $label = $w["label"] ?? null;
+    }
+    if (!is_string($addr)) {
+      continue;
+    }
+    $addr = trim($addr);
+    if (!preg_match("/^0x[a-fA-F0-9]{40}$/", $addr)) {
+      continue;
+    }
+    $addr = "0x" . strtolower(substr($addr, 2));
+    if ($addr === "0x0000000000000000000000000000000000000000") {
+      continue;
+    }
+    $labelStr = is_string($label) && trim($label) !== "" ? trim($label) : ("wallet-" . ((int) $i + 1));
+    $wallets[] = ["label" => $labelStr, "address" => $addr];
+    if (count($wallets) >= 10) {
+      break;
+    }
+  }
+
+  if ($wallets === []) {
+    fwrite(STDERR, "[entrypoint] WARN: demo wallets file contains no valid addresses: {$src}\n");
+    exit(0);
+  }
+
+  if (is_link($dst)) {
+    throw new RuntimeException("Refusing symlink demo wallets file: {$dst}");
+  }
+
+  $payload = [
+    "wallets" => $wallets,
+    "meta" => [
+      "created_at" => gmdate("c"),
+      "source" => "file:" . $src,
+    ],
+  ];
+
+  $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+  if (!is_string($json)) {
+    throw new RuntimeException("Unable to encode demo wallets JSON");
+  }
+
+  $tmp = $dst . ".tmp-" . bin2hex(random_bytes(6));
+  file_put_contents($tmp, $json . "\n");
+  @chmod($tmp, 0640);
+  @chgrp($tmp, "www-data");
+  if (!@rename($tmp, $dst)) {
+    @unlink($tmp);
+    throw new RuntimeException("Unable to move demo wallets file into place");
+  }
+
+  @chmod($dst, 0640);
+  @chgrp($dst, "www-data");
+
+  fwrite(STDERR, "[entrypoint] imported demo wallets file: {$dst} (from {$src})\n");
 '
 
 if [ "$ENABLE_SECRETS_AGENT" = "1" ]; then

@@ -14,6 +14,21 @@ docker compose \
   up --build
 ```
 
+Optional: create a dedicated **demo operator wallet** (addresses are shown on the dashboard; keys are stored locally and gitignored):
+
+```bash
+blackcat-testing/bin/demo-wallet init
+```
+
+Fund it with ~`0.1` EDGEN (recommended for live upgrade/audit demos), then restart the stack so the wallet list refreshes:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  up --build
+```
+
 Optional hardened filesystem mode:
 
 ```bash
