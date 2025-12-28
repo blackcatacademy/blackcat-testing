@@ -180,6 +180,12 @@ while true; do
   code_db_read="$(req_code GET /db/read)"
   code_db_write="$(req_code POST /db/write)"
   code_bypass_pdo="$(req_code GET /bypass/pdo)"
+  code_bypass_keys="000"
+  code_crypto_roundtrip="000"
+  if (( elapsed % 5 == 0 )); then
+    code_bypass_keys="$(req_code GET /bypass/keys)"
+    code_crypto_roundtrip="$(req_code POST /crypto/roundtrip)"
+  fi
 
   # Attack probes
   attack_invalid_methods
@@ -239,6 +245,22 @@ while true; do
         exit 13
       fi
     fi
+
+    if [[ "$read_allowed" == "true" && "$code_bypass_keys" == "500" ]]; then
+      echo "[attacker] FAIL: /bypass/keys returned 500 (possible key file read bypass or endpoint bug)" >&2
+      exit 16
+    fi
+
+    if [[ "$read_allowed" != "true" && "$code_crypto_roundtrip" == "200" ]]; then
+      fetch_health
+      health2="$(health_compact || echo '{}')"
+      read_allowed2="$(echo "$health2" | jq -r '.read_allowed' 2>/dev/null || echo "null")"
+
+      if [[ "$read_allowed2" != "true" ]]; then
+        echo "[attacker] FAIL: read_allowed=false but /crypto/roundtrip returned 200 (secrets.read must be denied in strict mode)" >&2
+        exit 17
+      fi
+    fi
   fi
 
   if [[ "${ok}" == "true" ]]; then
@@ -295,6 +317,8 @@ while true; do
       --arg code_db_read "${code_db_read}" \
       --arg code_db_write "${code_db_write}" \
       --arg code_bypass_pdo "${code_bypass_pdo}" \
+      --arg code_bypass_keys "${code_bypass_keys}" \
+      --arg code_crypto_roundtrip "${code_crypto_roundtrip}" \
       --argjson health "${health}" \
       '{
         run_id:$run_id,
@@ -304,7 +328,9 @@ while true; do
           health:($code_health|tonumber? // 0),
           db_read:($code_db_read|tonumber? // 0),
           db_write:($code_db_write|tonumber? // 0),
-          bypass_pdo:($code_bypass_pdo|tonumber? // 0)
+          bypass_pdo:($code_bypass_pdo|tonumber? // 0),
+          bypass_keys:($code_bypass_keys|tonumber? // 0),
+          crypto_roundtrip:($code_crypto_roundtrip|tonumber? // 0)
         },
         health:$health
       }' >> "${events_file}"
@@ -331,6 +357,8 @@ if [[ -f "${events_file}" ]]; then
       health_http_codes:(map(.http.health)|group_by(.)|map({code:.[0],count:length})),
       db_write_http_codes:(map(.http.db_write)|group_by(.)|map({code:.[0],count:length})),
       db_read_http_codes:(map(.http.db_read)|group_by(.)|map({code:.[0],count:length})),
+      bypass_keys_http_codes:(map(.http.bypass_keys)|group_by(.)|map({code:.[0],count:length})),
+      crypto_roundtrip_http_codes:(map(.http.crypto_roundtrip)|group_by(.)|map({code:.[0],count:length})),
       trust_true:(map(select(.health.trusted_now==true))|length),
       rpc_ok_true:(map(select(.health.rpc_ok_now==true))|length),
       read_allowed_true:(map(select(.health.read_allowed==true))|length),

@@ -138,3 +138,7 @@ Observed:
 
 - `docker-compose.byzantine-rpc.yml` cannot be executed on the same `InstanceController` once policy v3 runtime-config attestation is locked, because changing `trust.web3.rpc_endpoints` / `rpc_quorum` changes the committed config hash. To test multi-RPC quorum, create a separate `InstanceController` whose on-chain runtime-config attestation matches the multi-endpoint config.
 
+## Next run
+
+New commits change the integrity root of the minimal-prod image. For the next live-chain run (with updated on-chain
+state), use `docs/reports/EDGEN_LIVE_TEST_REPORT_NEXT.md`.

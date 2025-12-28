@@ -20,6 +20,9 @@ The dashboard shows:
 - on-chain `active_root` + `active_policy_hash`
 - the current failure reason (`error_codes` / `errors`) when the system fails closed
 
+Optional:
+- Debug status (not for monitoring): `http://localhost:8088/health/debug`
+
 ## 2) What to say (high-level)
 
 - The server does **not** trust local disk or hosting admins by default.
@@ -66,9 +69,24 @@ docker compose \
 Note: policy v3 commits to `trust.web3.rpc_endpoints` + `trust.web3.rpc_quorum`. If your InstanceController is locked to
 the default config, you need a separate InstanceController for this scenario.
 
+## 3.1) Optional: secrets-agent demo (crypto keys not readable by web runtime)
+
+Enable:
+
+```bash
+BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=1 \
+docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
+```
+
+On the dashboard you can run:
+- `Crypto roundtrip` (encrypt+decrypt)
+- `Probe key file read` (must be denied by OS permissions)
+
+Note: enabling this changes the runtime config JSON (policy v3 attestation). Use an InstanceController whose on-chain
+runtime-config commitment matches the secrets-agent-enabled config.
+
 ## 4) Cleanup
 
 ```bash
 docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml down -v
 ```
-

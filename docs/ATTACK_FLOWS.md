@@ -30,3 +30,13 @@ This suite tries to model realistic attacker actions and infrastructure failures
 - Every HTTP request enters via `BlackCat\Core\Kernel\HttpKernel` which boots the kernel and evaluates trust state.
 - `/health` is an observer endpoint (allowed even when reads are denied) and must remain read-only.
 - Trust evaluation is cached only within a single request (not across requests) to avoid stale-trust windows in long-lived workers.
+
+### Forwarded-header spoofing (reverse proxy)
+
+- Forwarding headers (`X-Forwarded-*`, `Forwarded`) must be rejected unless the request comes from a trusted proxy peer.
+- If the peer is trusted, `X-Forwarded-Proto=https` can be honored to avoid HTTPS downgrade bugs behind proxies.
+
+### Secrets boundary (prototype)
+
+- Key files should not be readable by the web runtime user (prevents direct `file_get_contents()` bypass).
+- When enabled, a privileged secrets agent can serve keys over a UNIX socket to allow crypto operations without exposing key files.

@@ -27,6 +27,10 @@ This harness spins up:
    - Note: `trust.web3.rpc_endpoints` and `trust.web3.rpc_quorum` are part of the runtime-config attestation and
      become immutable once locked on-chain for a given installation.
 
+5) (Optional) Decide whether to enable the secrets agent demo (`BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=1`).
+   - This changes the runtime config JSON and therefore changes the policy v3 runtime-config attestation value.
+   - If you enable it, keep it enabled for Steps 1–5 so the on-chain commitment matches.
+
 ## Step 1: Compute integrity root + policy hash (docker, local)
 
 From the `blackcatacademy` root:

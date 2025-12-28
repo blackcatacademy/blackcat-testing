@@ -9,9 +9,11 @@ It boots:
 Endpoints (intentionally tiny):
 
 - `GET /health` — JSON status snapshot (sanitized, safe for monitoring).
+- `GET /health/debug` — extended JSON payload for local debugging (not for public monitoring).
 - `POST /db/write` — tries a DB write via `BlackCat\Core\Database` wrapper.
 - `GET /db/read` — tries a DB read via `BlackCat\Core\Database` wrapper.
 - `GET /bypass/pdo` — attempts to access raw PDO (must be denied by TrustKernel guard).
+- `GET /bypass/keys` — attempts to read a key file directly (should be denied by OS permissions when secrets-agent mode is enabled).
+- `POST /crypto/roundtrip` — optional crypto demo (encrypt+decrypt, must still be guarded by TrustKernel `secrets.read`).
 
 This is not a “framework”. It exists only for security testing.
-

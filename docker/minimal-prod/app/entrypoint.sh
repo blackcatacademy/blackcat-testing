@@ -4,6 +4,7 @@ set -eu
 BOOT_MODE="${BLACKCAT_TESTING_BOOT_MODE:-run}"
 FORCE_PROVISION="${BLACKCAT_TESTING_FORCE_PROVISION:-0}"
 EXIT_AFTER_TAMPER="${BLACKCAT_TESTING_EXIT_AFTER_TAMPER:-0}"
+ENABLE_SECRETS_AGENT="${BLACKCAT_TESTING_ENABLE_SECRETS_AGENT:-0}"
 LOCAL_RPC_PROXY="${BLACKCAT_TESTING_LOCAL_RPC_PROXY:-0}"
 RPC_PROXY_PORT="${BLACKCAT_TESTING_RPC_PROXY_PORT:-8545}"
 RPC_PROXY_UPSTREAM="${BLACKCAT_TESTING_RPC_PROXY_UPSTREAM:-}"
@@ -43,6 +44,7 @@ export ROOT_DIR MANIFEST_PATH CONFIG_PATH FORCE_PROVISION
 export NO_REPROVISION_MARKER
 export CHAIN_ID RPC_ENDPOINTS RPC_QUORUM MODE MAX_STALE_SEC TIMEOUT_SEC INSTANCE_CONTROLLER
 export DB_DSN DB_USER DB_PASS
+export ENABLE_SECRETS_AGENT
 
 php -r '
   $force = getenv("FORCE_PROVISION") === "1";
@@ -80,6 +82,15 @@ php -r '
       "pass" => (string) getenv("DB_PASS"),
     ],
   ];
+
+  if (getenv("ENABLE_SECRETS_AGENT") === "1") {
+    $cfg["crypto"] = [
+      "keys_dir" => "/etc/blackcat/keys",
+      "agent" => [
+        "socket_path" => "/etc/blackcat/secrets-agent.sock",
+      ],
+    ];
+  }
 
   $manifest = \BlackCat\Core\TrustKernel\IntegrityManifestBuilder::build($rootDir, null);
   $noReprovision = !$force && is_string($noReprovisionMarker) && $noReprovisionMarker !== "" && file_exists($noReprovisionMarker);
@@ -135,6 +146,26 @@ php -r '
 if [ "$BOOT_MODE" = "compute" ]; then
   echo "[entrypoint] compute-only mode; exiting." >&2
   exit 0
+fi
+
+if [ "$ENABLE_SECRETS_AGENT" = "1" ]; then
+  echo "[entrypoint] provisioning root-owned crypto key files (secrets-agent mode)" >&2
+  php -r '
+    $dir = "/etc/blackcat/keys";
+    if (!is_dir($dir)) {
+      @mkdir($dir, 0700, true);
+    }
+    @chmod($dir, 0700);
+    $path = $dir . "/crypto_key_v1.key";
+    if (!is_file($path)) {
+      $raw = random_bytes(SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_KEYBYTES);
+      file_put_contents($path, $raw);
+      @chmod($path, 0400);
+    }
+  '
+
+  echo "[entrypoint] starting secrets agent (root) on unix socket" >&2
+  php /srv/blackcat/site/bin/secrets-agent.php >/dev/null 2>&1 &
 fi
 
 # Provision a minimal schema so read-only endpoints can function during stale-read mode.

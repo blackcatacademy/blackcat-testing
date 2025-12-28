@@ -7,6 +7,7 @@ use BlackCat\Core\Database;
 use BlackCat\Core\Kernel\HttpKernel;
 use BlackCat\Core\Kernel\HttpKernelContext;
 use BlackCat\Core\Kernel\HttpKernelOptions;
+use BlackCat\Core\Security\Crypto;
 use BlackCat\Core\TrustKernel\TrustKernelException;
 
 require __DIR__ . '/../../vendor/autoload.php';
@@ -20,7 +21,7 @@ if (!is_string($path) || $path === '') {
 // Allow a small monitoring endpoint even when strict mode is denying reads.
 // This endpoint must remain read-only and must not expose secrets.
 $opts = new HttpKernelOptions();
-if ($path === '/health' || $path === '/' || $path === '/demo') {
+if ($path === '/health' || $path === '/health/debug' || $path === '/' || $path === '/demo') {
     $opts->checkTrustOnRequest = false;
 }
 
@@ -190,6 +191,10 @@ HttpKernel::run(
         echo '<p class="muted">Expected in strict mode: writes denied when <span class="k">write_allowed=false</span>, reads denied when <span class="k">read_allowed=false</span>, and the PDO bypass probe is always denied.</p>';
         echo '</div>';
 
+        echo '<div class="card"><div class="row"><button id="btnCrypto">Crypto roundtrip</button><button id="btnKeyBypass">Probe key file read</button></div>';
+        echo '<p class="muted">Optional demo: when a privileged secrets-agent is enabled, the web runtime must not be able to read key files directly, but crypto operations can still work through the agent (subject to TrustKernel guards).</p>';
+        echo '</div>';
+
         echo '</div></div>';
 
         echo '<script>window.__BLACKCAT_META__=' . $metaJson . ';</script>';
@@ -216,46 +221,65 @@ HttpKernel::run(
             $("controllerLink").textContent = "?";
           }
 
-          let lastTrusted = null;
-          let trafficTimer = null;
-          let trafficInFlight = false;
-          let trafficTick = 0;
+	          let lastTrusted = null;
+	          let lastDebugTrust = null;
+	          let debugTick = 0;
+	          let trafficTimer = null;
+	          let trafficInFlight = false;
+	          let trafficTick = 0;
 
-          async function refresh() {
-            try {
-              const res = await fetch("/health", {cache:"no-store"});
-              const json = await res.json();
-              const trust = json && json.trust ? json.trust : null;
-              $("healthRaw").textContent = JSON.stringify(json, null, 2);
-              if (!trust) { $("titleState").textContent = "No trust payload"; setDot("warn"); return; }
-              $("enf").textContent = trust.enforcement ?? "?";
-              $("mode").textContent = trust.mode ?? "?";
-              setBool("rpc", trust.rpc_ok_now);
-              setBool("read", trust.read_allowed);
-              setBool("write", trust.write_allowed);
-              setBool("paused", trust.paused);
-              const checkedAt = typeof trust.checked_at === "number" ? trust.checked_at : null;
-              const lastOkAt = typeof trust.last_ok_at === "number" ? trust.last_ok_at : null;
-              if (checkedAt && lastOkAt) {
-                $("lastOkAge").textContent = Math.max(0, checkedAt - lastOkAt) + "s";
-              } else {
-                $("lastOkAge").textContent = "?";
-              }
+	          async function refreshDebug() {
+	            try {
+	              const res = await fetch("/health/debug", {cache:"no-store"});
+	              const json = await res.json();
+	              const trust = json && json.trust ? json.trust : null;
+	              if (!trust) return;
+	              lastDebugTrust = trust;
+	            } catch (e) {
+	              // best-effort only
+	            }
+	          }
 
-              const snap = trust.snapshot || null;
-              $("activeRoot").textContent = snap && snap.active_root ? shortHex(snap.active_root) : "?";
-              $("activePolicy").textContent = snap && snap.active_policy_hash ? shortHex(snap.active_policy_hash) : "?";
+	          async function refresh() {
+	            try {
+	              const res = await fetch("/health", {cache:"no-store"});
+	              const json = await res.json();
+	              const trust = json && json.trust ? json.trust : null;
+	              $("healthRaw").textContent = JSON.stringify(json, null, 2);
+	              if (!trust) { $("titleState").textContent = "No trust payload"; setDot("warn"); return; }
+	              $("enf").textContent = trust.enforcement ?? "?";
+	              $("mode").textContent = trust.mode ?? "?";
+	              setBool("rpc", trust.rpc_ok_now);
+	              setBool("read", trust.read_allowed);
+	              setBool("write", trust.write_allowed);
+	              setBool("paused", trust.paused);
+	              const checkedAt = typeof trust.checked_at === "number" ? trust.checked_at : null;
+	              const lastOkAt = typeof trust.last_ok_at === "number" ? trust.last_ok_at : null;
+	              if (checkedAt && lastOkAt) {
+	                $("lastOkAge").textContent = Math.max(0, checkedAt - lastOkAt) + "s";
+	              } else {
+	                $("lastOkAge").textContent = "?";
+	              }
 
-              const codes = Array.isArray(trust.error_codes) ? trust.error_codes : [];
-              const errs = Array.isArray(trust.errors) ? trust.errors : [];
-              const errEl = $("errorsBox");
-              if (codes.length || errs.length) {
-                errEl.style.display = "block";
-                errEl.textContent = "error_codes:\\n- " + (codes.length ? codes.join(\"\\n- \") : \"(none)\") + \"\\n\\nerrors:\\n- \" + (errs.length ? errs.join(\"\\n- \") : \"(none)\");
-              } else {
-                errEl.style.display = "none";
-                errEl.textContent = "";
-              }
+	              debugTick++;
+	              if (lastDebugTrust === null || trust.trusted_now !== true || debugTick % 5 === 0) {
+	                await refreshDebug();
+	              }
+
+	              const snap = (lastDebugTrust && lastDebugTrust.snapshot) ? lastDebugTrust.snapshot : null;
+	              $("activeRoot").textContent = snap && snap.active_root ? shortHex(snap.active_root) : "?";
+	              $("activePolicy").textContent = snap && snap.active_policy_hash ? shortHex(snap.active_policy_hash) : "?";
+
+	              const codes = Array.isArray(trust.error_codes) ? trust.error_codes : [];
+	              const errs = (lastDebugTrust && Array.isArray(lastDebugTrust.errors)) ? lastDebugTrust.errors : [];
+	              const errEl = $("errorsBox");
+	              if (codes.length || errs.length) {
+	                errEl.style.display = "block";
+	                errEl.textContent = "error_codes:\\n- " + (codes.length ? codes.join(\"\\n- \") : \"(none)\") + \"\\n\\nerrors:\\n- \" + (errs.length ? errs.join(\"\\n- \") : \"(none)\");
+	              } else {
+	                errEl.style.display = "none";
+	                errEl.textContent = "";
+	              }
 
               const ok = trust.trusted_now === true;
               $("titleState").textContent = ok ? "Trusted" : "Not trusted";
@@ -279,6 +303,8 @@ HttpKernel::run(
           $("btnRead").addEventListener("click", () => call("/db/read", "GET"));
           $("btnWrite").addEventListener("click", () => call("/db/write", "POST"));
           $("btnBypass").addEventListener("click", () => call("/bypass/pdo", "GET"));
+          $("btnCrypto").addEventListener("click", () => call("/crypto/roundtrip", "POST"));
+          $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
           $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
 
           $("btnTraffic").addEventListener("click", () => {
@@ -298,6 +324,8 @@ HttpKernel::run(
                 trafficTick++;
                 if (trafficTick % 10 === 0) {
                   await call("/bypass/pdo", "GET");
+                } else if (trafficTick % 15 === 0) {
+                  await call("/crypto/roundtrip", "POST");
                 } else if (trafficTick % 3 === 0) {
                   await call("/db/write", "POST");
                 } else {
@@ -318,7 +346,18 @@ HttpKernel::run(
     }
 
     if ($path === '/health') {
-        // Intentionally exclude local filesystem details (computed_root) from the public output.
+        $status = $kernelCtx->kernel->check()->toMonitorArray();
+
+        $sendJson(200, [
+            'ok' => true,
+            'trust' => $status,
+        ]);
+        return;
+    }
+
+    if ($path === '/health/debug') {
+        // Debug payload for local development / demo UI.
+        // Not intended for public monitoring endpoints.
         $status = $kernelCtx->kernel->check()->toArray();
         unset($status['computed_root']);
 
@@ -376,6 +415,72 @@ HttpKernel::run(
             $sendText(403, 'denied');
             return;
         } catch (\Throwable) {
+            $sendText(500, 'error');
+            return;
+        }
+    }
+
+    if ($path === '/bypass/keys') {
+        try {
+            $keysDir = Config::get('crypto.keys_dir');
+            if (!is_string($keysDir) || trim($keysDir) === '') {
+                $sendText(404, 'crypto.keys_dir not configured');
+                return;
+            }
+
+            $path = rtrim($keysDir, '/\\') . '/crypto_key_v1.key';
+            $raw = @file_get_contents($path);
+            if (is_string($raw) && strlen($raw) > 0) {
+                $sendText(500, 'unexpected: key file readable (' . strlen($raw) . ' bytes)');
+                return;
+            }
+
+            $sendText(403, 'denied');
+            return;
+        } catch (\Throwable) {
+            $sendText(500, 'error');
+            return;
+        }
+    }
+
+    if ($path === '/crypto/roundtrip') {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            $sendText(405, 'Method Not Allowed');
+            return;
+        }
+
+        try {
+            $keysDir = Config::get('crypto.keys_dir');
+            if (!is_string($keysDir) || trim($keysDir) === '') {
+                $sendText(404, 'crypto.keys_dir not configured');
+                return;
+            }
+
+            Crypto::initFromKeyManager($keysDir);
+
+            $cipher = Crypto::encrypt('hello', 'compact_base64');
+            $plain = Crypto::decrypt($cipher);
+
+            Crypto::clearKey();
+
+            if ($plain !== 'hello') {
+                $sendText(500, 'roundtrip mismatch');
+                return;
+            }
+
+            $sendJson(200, [
+                'ok' => true,
+                'cipher_len' => strlen($cipher),
+            ]);
+            return;
+        } catch (TrustKernelException) {
+            $sendText(403, 'denied');
+            return;
+        } catch (\Throwable) {
+            try {
+                Crypto::clearKey();
+            } catch (\Throwable) {
+            }
             $sendText(500, 'error');
             return;
         }

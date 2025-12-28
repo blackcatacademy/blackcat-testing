@@ -207,6 +207,26 @@ docker compose \
   up --build --abort-on-container-exit attacker
 ```
 
+## K) Secrets-agent (optional)
+
+This enables a privileged secrets agent that serves crypto keys over a UNIX socket, while key files remain
+root-owned and unreadable by the web runtime user.
+
+Enable:
+
+```bash
+BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=1 \
+docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build --abort-on-container-exit attacker
+```
+
+Expected outcome (when crypto is configured and trust is OK):
+- `/bypass/keys` returns `403` (web runtime cannot read key files directly)
+- `/crypto/roundtrip` returns `200` only when TrustKernel `read_allowed=true`
+
+Important:
+- Policy v3 commits to the runtime config JSON. Enabling this changes the committed hash, so use an InstanceController
+  whose runtime-config attestation matches the secrets-agent-enabled config.
+
 ## Notes
 
 - These scenarios require a correctly provisioned on-chain `InstanceController` (see `docs/EDGEN_MINIMAL_PROD_RUNBOOK.md`).
