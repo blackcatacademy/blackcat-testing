@@ -207,25 +207,26 @@ docker compose \
   up --build --abort-on-container-exit attacker
 ```
 
-## K) Secrets-agent (optional)
+## K) Secrets-agent (default)
 
-This enables a privileged secrets agent that serves crypto keys over a UNIX socket, while key files remain
+By default, the stack runs a privileged secrets agent that serves crypto keys over a UNIX socket, while key files remain
 root-owned and unreadable by the web runtime user.
 
-Enable:
+Disable (not recommended; requires a different InstanceController commitment):
 
 ```bash
-BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=1 \
+BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=0 \
 docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build --abort-on-container-exit attacker
 ```
 
 Expected outcome (when crypto is configured and trust is OK):
 - `/bypass/keys` returns `403` (web runtime cannot read key files directly)
 - `/crypto/roundtrip` returns `200` only when TrustKernel `read_allowed=true`
+- `/bypass/agent` returns `403` when `read_allowed=false` (agent enforces TrustKernel too)
 
 Important:
-- Policy v3 commits to the runtime config JSON. Enabling this changes the committed hash, so use an InstanceController
-  whose runtime-config attestation matches the secrets-agent-enabled config.
+- Policy v3 commits to the runtime config JSON. Switching secrets-agent on/off changes the committed hash, so use an
+  InstanceController whose runtime-config attestation matches the chosen config.
 
 ## Notes
 

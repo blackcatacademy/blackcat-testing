@@ -69,21 +69,24 @@ docker compose \
 Note: policy v3 commits to `trust.web3.rpc_endpoints` + `trust.web3.rpc_quorum`. If your InstanceController is locked to
 the default config, you need a separate InstanceController for this scenario.
 
-## 3.1) Optional: secrets-agent demo (crypto keys not readable by web runtime)
+## 3.1) Secrets-agent mode (default)
 
-Enable:
-
-```bash
-BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=1 \
-docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
-```
+By default, the demo runs with **secrets-agent mode enabled**:
+- crypto key files are **root-owned** and not readable by the web runtime
+- the web runtime uses a local UNIX socket (and the agent also enforces TrustKernel)
 
 On the dashboard you can run:
 - `Crypto roundtrip` (encrypt+decrypt)
 - `Probe key file read` (must be denied by OS permissions)
+- (When trust fails) `Probe secrets-agent bypass` (must be denied too)
 
-Note: enabling this changes the runtime config JSON (policy v3 attestation). Use an InstanceController whose on-chain
-runtime-config commitment matches the secrets-agent-enabled config.
+To disable secrets-agent mode (not recommended), you must use a different InstanceController whose on-chain
+runtime-config commitment matches the non-agent config:
+
+```bash
+BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=0 \
+docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
+```
 
 ## 4) Cleanup
 

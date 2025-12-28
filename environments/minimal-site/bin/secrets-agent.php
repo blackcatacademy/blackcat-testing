@@ -14,6 +14,9 @@ require '/srv/blackcat/vendor/autoload.php';
 
 use BlackCat\Config\Runtime\Config;
 use BlackCat\Config\Runtime\ConfigBootstrap;
+use BlackCat\Core\Kernel\KernelBootstrap;
+use BlackCat\Core\TrustKernel\TrustKernel;
+use BlackCat\Core\TrustKernel\TrustKernelException;
 use BlackCat\Core\Security\KeyManager;
 
 static function out(string $msg): void
@@ -54,6 +57,7 @@ resolveConfigIfPossible();
 
 $socketPath = null;
 $keysDir = null;
+$kernel = null;
 
 try {
     if (Config::isInitialized()) {
@@ -86,6 +90,13 @@ if ($keysDir === '' || str_contains($keysDir, "\0")) {
     throw new \RuntimeException('Invalid keys directory path.');
 }
 
+try {
+    $kernel = KernelBootstrap::bootOrFail();
+} catch (\Throwable $e) {
+    out('[secrets-agent] ERROR: TrustKernel bootstrap failed: ' . $e->getMessage());
+    exit(2);
+}
+
 if (file_exists($socketPath) || is_link($socketPath)) {
     if (is_link($socketPath)) {
         throw new \RuntimeException('Refusing to use symlink socket path: ' . $socketPath);
@@ -107,6 +118,10 @@ out('[secrets-agent] keys_dir=' . $keysDir);
 // Hard cap to avoid abuse.
 $maxLine = 8 * 1024;
 $maxKeyBytes = 4096;
+
+if (is_link($keysDir)) {
+    throw new \RuntimeException('Refusing to use symlink keys_dir: ' . $keysDir);
+}
 
 while (true) {
     $conn = @stream_socket_accept($server, -1);
@@ -159,11 +174,18 @@ while (true) {
     }
 
     try {
+        if ($kernel instanceof TrustKernel) {
+            $kernel->assertReadAllowed('secrets-agent:get_all_keys');
+        }
+
         $versions = KeyManager::listKeyVersions($keysDir, $basename);
         $outKeys = [];
         foreach ($versions as $ver => $path) {
             if (!is_string($ver) || !is_string($path)) {
                 continue;
+            }
+            if (is_link($path)) {
+                throw new \RuntimeException('symlink_key_file');
             }
             $raw = @file_get_contents($path);
             if (!is_string($raw) || $raw === '') {
@@ -179,10 +201,11 @@ while (true) {
         }
 
         fwrite($conn, json_encode(['ok' => true, 'keys' => $outKeys], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+    } catch (TrustKernelException) {
+        fwrite($conn, json_encode(['ok' => false, 'error' => 'denied']) . "\n");
     } catch (\Throwable $e) {
         fwrite($conn, json_encode(['ok' => false, 'error' => 'agent_error:' . $e->getMessage()]) . "\n");
     } finally {
         fclose($conn);
     }
 }
-

@@ -4,7 +4,7 @@ set -eu
 BOOT_MODE="${BLACKCAT_TESTING_BOOT_MODE:-run}"
 FORCE_PROVISION="${BLACKCAT_TESTING_FORCE_PROVISION:-0}"
 EXIT_AFTER_TAMPER="${BLACKCAT_TESTING_EXIT_AFTER_TAMPER:-0}"
-ENABLE_SECRETS_AGENT="${BLACKCAT_TESTING_ENABLE_SECRETS_AGENT:-0}"
+ENABLE_SECRETS_AGENT="${BLACKCAT_TESTING_ENABLE_SECRETS_AGENT:-1}"
 LOCAL_RPC_PROXY="${BLACKCAT_TESTING_LOCAL_RPC_PROXY:-0}"
 RPC_PROXY_PORT="${BLACKCAT_TESTING_RPC_PROXY_PORT:-8545}"
 RPC_PROXY_UPSTREAM="${BLACKCAT_TESTING_RPC_PROXY_UPSTREAM:-}"
@@ -166,6 +166,23 @@ if [ "$ENABLE_SECRETS_AGENT" = "1" ]; then
 
   echo "[entrypoint] starting secrets agent (root) on unix socket" >&2
   php /srv/blackcat/site/bin/secrets-agent.php >/dev/null 2>&1 &
+  agent_pid="$!"
+
+  # Fail-closed: do not continue boot if the agent is expected but not running.
+  i="0"
+  while [ "$i" -lt 50 ]; do
+    if [ -S "/etc/blackcat/secrets-agent.sock" ]; then
+      break
+    fi
+    i="$((i + 1))"
+    sleep 0.1 || true
+  done
+
+  if [ ! -S "/etc/blackcat/secrets-agent.sock" ]; then
+    echo "[entrypoint] ERROR: secrets-agent did not create its unix socket (pid=${agent_pid})" >&2
+    kill "${agent_pid}" >/dev/null 2>&1 || true
+    exit 2
+  fi
 fi
 
 # Provision a minimal schema so read-only endpoints can function during stale-read mode.

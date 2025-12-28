@@ -13,7 +13,8 @@ Endpoints (intentionally tiny):
 - `POST /db/write` — tries a DB write via `BlackCat\Core\Database` wrapper.
 - `GET /db/read` — tries a DB read via `BlackCat\Core\Database` wrapper.
 - `GET /bypass/pdo` — attempts to access raw PDO (must be denied by TrustKernel guard).
-- `GET /bypass/keys` — attempts to read a key file directly (should be denied by OS permissions when secrets-agent mode is enabled).
-- `POST /crypto/roundtrip` — optional crypto demo (encrypt+decrypt, must still be guarded by TrustKernel `secrets.read`).
+- `GET /bypass/keys` — attempts to read a key file directly (must be denied by OS permissions in secrets-agent mode).
+- `GET /bypass/agent` — attempts to bypass TrustKernel by calling the secrets-agent socket directly (must be denied when `read_allowed=false`).
+- `POST /crypto/roundtrip` — crypto demo (encrypt+decrypt, must still be guarded by TrustKernel `secrets.read`).
 
 This is not a “framework”. It exists only for security testing.

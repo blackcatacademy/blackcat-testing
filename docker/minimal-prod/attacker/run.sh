@@ -181,9 +181,13 @@ while true; do
   code_db_write="$(req_code POST /db/write)"
   code_bypass_pdo="$(req_code GET /bypass/pdo)"
   code_bypass_keys="000"
+  code_bypass_agent="000"
   code_crypto_roundtrip="000"
   if (( elapsed % 5 == 0 )); then
     code_bypass_keys="$(req_code GET /bypass/keys)"
+    if [[ "$read_allowed" != "true" ]]; then
+      code_bypass_agent="$(req_code GET /bypass/agent)"
+    fi
     code_crypto_roundtrip="$(req_code POST /crypto/roundtrip)"
   fi
 
@@ -249,6 +253,17 @@ while true; do
     if [[ "$read_allowed" == "true" && "$code_bypass_keys" == "500" ]]; then
       echo "[attacker] FAIL: /bypass/keys returned 500 (possible key file read bypass or endpoint bug)" >&2
       exit 16
+    fi
+
+    if [[ "$read_allowed" != "true" && "$code_bypass_agent" == "500" ]]; then
+      fetch_health
+      health2="$(health_compact || echo '{}')"
+      read_allowed2="$(echo "$health2" | jq -r '.read_allowed' 2>/dev/null || echo "null")"
+
+      if [[ "$read_allowed2" != "true" ]]; then
+        echo "[attacker] FAIL: read_allowed=false but /bypass/agent returned 500 (possible secrets-agent bypass or agent bug)" >&2
+        exit 18
+      fi
     fi
 
     if [[ "$read_allowed" != "true" && "$code_crypto_roundtrip" == "200" ]]; then

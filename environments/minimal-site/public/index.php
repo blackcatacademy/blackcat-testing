@@ -191,8 +191,8 @@ HttpKernel::run(
         echo '<p class="muted">Expected in strict mode: writes denied when <span class="k">write_allowed=false</span>, reads denied when <span class="k">read_allowed=false</span>, and the PDO bypass probe is always denied.</p>';
         echo '</div>';
 
-        echo '<div class="card"><div class="row"><button id="btnCrypto">Crypto roundtrip</button><button id="btnKeyBypass">Probe key file read</button></div>';
-        echo '<p class="muted">Optional demo: when a privileged secrets-agent is enabled, the web runtime must not be able to read key files directly, but crypto operations can still work through the agent (subject to TrustKernel guards).</p>';
+        echo '<div class="card"><div class="row"><button id="btnCrypto">Crypto roundtrip</button><button id="btnKeyBypass">Probe key file read</button><button id="btnAgentBypass">Probe secrets-agent</button></div>';
+        echo '<p class="muted">Secrets-agent mode: key files must not be readable by the web runtime, but crypto operations can still work through the agent (and the agent also enforces TrustKernel).</p>';
         echo '</div>';
 
         echo '</div></div>';
@@ -305,6 +305,7 @@ HttpKernel::run(
           $("btnBypass").addEventListener("click", () => call("/bypass/pdo", "GET"));
           $("btnCrypto").addEventListener("click", () => call("/crypto/roundtrip", "POST"));
           $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
+          $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
           $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
 
           $("btnTraffic").addEventListener("click", () => {
@@ -436,6 +437,86 @@ HttpKernel::run(
             }
 
             $sendText(403, 'denied');
+            return;
+        } catch (\Throwable) {
+            $sendText(500, 'error');
+            return;
+        }
+    }
+
+    if ($path === '/bypass/agent') {
+        try {
+            $socketPath = Config::get('crypto.agent.socket_path');
+            if (!is_string($socketPath) || trim($socketPath) === '') {
+                $sendText(404, 'crypto.agent.socket_path not configured');
+                return;
+            }
+
+            $shouldBeDenied = !$kernelCtx->status->readAllowed;
+
+            $socketPath = trim($socketPath);
+            if ($socketPath === '' || str_contains($socketPath, "\0")) {
+                $sendText(500, 'invalid socket path');
+                return;
+            }
+
+            $errno = 0;
+            $errstr = '';
+            $fp = @stream_socket_client('unix://' . $socketPath, $errno, $errstr, 1, STREAM_CLIENT_CONNECT);
+            if (!is_resource($fp)) {
+                $sendText(500, 'connect_failed');
+                return;
+            }
+
+            stream_set_timeout($fp, 1);
+            $payload = json_encode(['op' => 'get_all_keys', 'basename' => 'crypto_key'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if (!is_string($payload)) {
+                fclose($fp);
+                $sendText(500, 'encode_failed');
+                return;
+            }
+
+            $ok = @fwrite($fp, $payload . "\n");
+            if ($ok === false) {
+                fclose($fp);
+                $sendText(500, 'write_failed');
+                return;
+            }
+
+            $raw = stream_get_contents($fp, 256 * 1024);
+            fclose($fp);
+
+            if (!is_string($raw) || trim($raw) === '') {
+                $sendText($shouldBeDenied ? 403 : 500, $shouldBeDenied ? 'denied' : 'unexpected empty response');
+                return;
+            }
+
+            $raw = trim($raw);
+            $decoded = json_decode($raw, true);
+            if (!is_array($decoded)) {
+                $sendText(500, 'bad_response');
+                return;
+            }
+
+            $okFlag = $decoded['ok'] ?? null;
+            if ($okFlag === true) {
+                $keys = $decoded['keys'] ?? null;
+                $count = is_array($keys) ? count($keys) : 0;
+                if ($count > 0) {
+                    if ($shouldBeDenied) {
+                        $sendText(500, 'unexpected: secrets-agent returned key material while read_allowed=false');
+                        return;
+                    }
+
+                    $sendText(200, 'ok (keys_count=' . $count . ')');
+                    return;
+                }
+
+                $sendText($shouldBeDenied ? 403 : 500, $shouldBeDenied ? 'denied' : 'unexpected: agent returned no keys');
+                return;
+            }
+
+            $sendText($shouldBeDenied ? 403 : 500, $shouldBeDenied ? 'denied' : 'unexpected: agent denied while read_allowed=true');
             return;
         } catch (\Throwable) {
             $sendText(500, 'error');
