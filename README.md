@@ -24,6 +24,7 @@ This repo ships a tiny demo site for partners to observe the kernel status in re
 unprotected “control” site to compare behavior without BlackCat protections.
 
 ```bash
+export BLACKCAT_INSTANCE_CONTROLLER=0x...   # required for a trusted-at-start demo
 docker compose \
   -f docker/minimal-prod/docker-compose.yml \
   -f docker/minimal-prod/docker-compose.demo.yml \

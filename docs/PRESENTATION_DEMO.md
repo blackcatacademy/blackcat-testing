@@ -7,6 +7,12 @@ model in real time.
 
 From the `blackcatacademy` root:
 
+Set the InstanceController address (required for a “trusted at start” demo):
+
+```bash
+export BLACKCAT_INSTANCE_CONTROLLER=0x...
+```
+
 ```bash
 docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
