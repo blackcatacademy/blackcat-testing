@@ -181,10 +181,12 @@ while true; do
   code_db_write="$(req_code POST /db/write)"
   code_bypass_pdo="$(req_code GET /bypass/pdo)"
   code_bypass_keys="000"
+  code_bypass_db_creds="000"
   code_bypass_agent="000"
   code_crypto_roundtrip="000"
   if (( elapsed % 5 == 0 )); then
     code_bypass_keys="$(req_code GET /bypass/keys)"
+    code_bypass_db_creds="$(req_code GET /bypass/db-creds)"
     if [[ "$read_allowed" != "true" ]]; then
       code_bypass_agent="$(req_code GET /bypass/agent)"
     fi
@@ -253,6 +255,11 @@ while true; do
     if [[ "$read_allowed" == "true" && "$code_bypass_keys" == "500" ]]; then
       echo "[attacker] FAIL: /bypass/keys returned 500 (possible key file read bypass or endpoint bug)" >&2
       exit 16
+    fi
+
+    if [[ "$read_allowed" == "true" && "$code_bypass_db_creds" == "500" ]]; then
+      echo "[attacker] FAIL: /bypass/db-creds returned 500 (possible DB credentials file read bypass or endpoint bug)" >&2
+      exit 17
     fi
 
     if [[ "$read_allowed" != "true" && "$code_bypass_agent" == "500" ]]; then

@@ -18,6 +18,20 @@ docker run --rm -v "$PWD":/app -w /app composer:2.7 composer test
 docker run --rm -v "$PWD":/app -w /app composer:2.7 composer stan
 ```
 
+### Optional: single “test-suite” image
+
+Build (from `blackcatacademy` root):
+
+```bash
+docker build -f blackcat-testing/docker/test-suite/Dockerfile -t blackcat-testing-suite .
+```
+
+Run:
+
+```bash
+docker run --rm blackcat-testing-suite
+```
+
 ## Demo dashboard (localhost)
 
 This repo ships a tiny demo site for partners to observe the kernel status in real time, plus an intentionally

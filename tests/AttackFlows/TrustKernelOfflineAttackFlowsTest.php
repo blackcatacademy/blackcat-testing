@@ -35,8 +35,8 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
 
         $runtimeConfig = self::runtimeConfig(
             chainId: 4207,
-            rpcEndpoints: ['https://stub.local'],
-            rpcQuorum: 1,
+            rpcEndpoints: ['https://stub-1.local', 'https://stub-2.local'],
+            rpcQuorum: 2,
             mode: 'full',
             maxStaleSec: 60,
             timeoutSec: 5,
@@ -95,8 +95,8 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
 
         $runtimeConfig = self::runtimeConfig(
             chainId: 4207,
-            rpcEndpoints: ['https://stub.local'],
-            rpcQuorum: 1,
+            rpcEndpoints: ['https://stub-1.local', 'https://stub-2.local'],
+            rpcQuorum: 2,
             mode: 'full',
             maxStaleSec: 60,
             timeoutSec: 5,
@@ -149,8 +149,8 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
 
         $runtimeConfig = self::runtimeConfig(
             chainId: 4207,
-            rpcEndpoints: ['https://stub.local'],
-            rpcQuorum: 1,
+            rpcEndpoints: ['https://stub-1.local', 'https://stub-2.local'],
+            rpcQuorum: 2,
             mode: 'full',
             maxStaleSec: 60,
             timeoutSec: 5,
@@ -193,8 +193,8 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
 
         $runtimeConfigV1 = self::runtimeConfig(
             chainId: 4207,
-            rpcEndpoints: ['https://stub.local'],
-            rpcQuorum: 1,
+            rpcEndpoints: ['https://stub-1.local', 'https://stub-2.local'],
+            rpcQuorum: 2,
             mode: 'full',
             maxStaleSec: 60,
             timeoutSec: 5,
@@ -262,8 +262,8 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
 
         $runtimeConfig = self::runtimeConfig(
             chainId: 4207,
-            rpcEndpoints: ['https://stub.local'],
-            rpcQuorum: 1,
+            rpcEndpoints: ['https://stub-1.local', 'https://stub-2.local'],
+            rpcQuorum: 2,
             mode: 'full',
             maxStaleSec: 5,
             timeoutSec: 5,
@@ -287,7 +287,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $transport = new StubWeb3Transport(
             chainId: 4207,
             snapshotResultHex: $snapshotHex,
-            ethCallFailAfter: 2,
+            ethCallFailAfter: 4,
         );
         $kernel = new TrustKernel($cfg, null, $transport);
 
@@ -320,8 +320,8 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
 
         $runtimeConfig = self::runtimeConfig(
             chainId: 4207,
-            rpcEndpoints: ['https://stub.local'],
-            rpcQuorum: 1,
+            rpcEndpoints: ['https://stub-1.local', 'https://stub-2.local'],
+            rpcQuorum: 2,
             mode: 'full',
             maxStaleSec: 5,
             timeoutSec: 5,
@@ -345,7 +345,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $transport = new StubWeb3Transport(
             chainId: 4207,
             snapshotResultHex: $snapshotHex,
-            ethCallFailAfter: 2,
+            ethCallFailAfter: 4,
         );
         $kernel = new TrustKernel($cfg, null, $transport);
 
@@ -379,8 +379,8 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
 
         $runtimeConfig = self::runtimeConfig(
             chainId: 4207,
-            rpcEndpoints: ['https://stub.local'],
-            rpcQuorum: 1,
+            rpcEndpoints: ['https://stub-1.local', 'https://stub-2.local'],
+            rpcQuorum: 2,
             mode: 'full',
             maxStaleSec: 60,
             timeoutSec: 5,
