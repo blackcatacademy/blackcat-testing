@@ -17,6 +17,7 @@ use BlackCat\Config\Runtime\ConfigBootstrap;
 use BlackCat\Core\Kernel\KernelBootstrap;
 use BlackCat\Core\TrustKernel\TrustKernel;
 use BlackCat\Core\TrustKernel\TrustKernelException;
+use BlackCat\Core\TrustKernel\AuditChain;
 use BlackCat\Core\Security\KeyManager;
 use BlackCat\Core\Security\SecretsAgentPolicy;
 
@@ -161,6 +162,7 @@ resolveConfigIfPossible();
 $socketPath = null;
 $keysDir = null;
 $dbCredsPath = null;
+$auditDir = null;
 $kernel = null;
 $peerCredRequired = true;
 /** @var list<int> */
@@ -170,6 +172,8 @@ $limiterEnabled = true;
 $limiterDefaultRpm = 6000;
 /** @var array<string,int> */
 $limiterOpRpm = [];
+/** @var AuditChain|null */
+$auditChain = null;
 
 /**
  * @return array{uid:?int,gid:?int,pid:?int,peer:?string}
@@ -234,6 +238,24 @@ function peerKey(array $info): string
     }
 
     return $parts !== [] ? implode(' ', $parts) : 'peer=unknown';
+}
+
+/**
+ * @param AuditChain|null $chain
+ * @param array<string,mixed> $actor
+ * @param array<string,mixed> $meta
+ */
+function auditAppend(?AuditChain $chain, string $type, array $actor, array $meta): void
+{
+    if ($chain === null) {
+        return;
+    }
+
+    try {
+        $chain->append($type, $meta, $actor);
+    } catch (\Throwable $e) {
+        out('[secrets-agent] WARN: audit append failed: ' . $e->getMessage());
+    }
 }
 
 try {
@@ -321,6 +343,11 @@ try {
             }
             $limiterOpRpm = $out;
         }
+
+        $auditRaw = safeString($repo->get('trust.audit.dir'));
+        if ($auditRaw !== null) {
+            $auditDir = $repo->resolvePath($auditRaw);
+        }
     }
 } catch (\Throwable $e) {
     out('[secrets-agent] WARN: runtime config read failed: ' . $e->getMessage());
@@ -329,6 +356,7 @@ try {
 $socketPath ??= '/etc/blackcat/secrets-agent.sock';
 $keysDir ??= '/etc/blackcat/keys';
 $dbCredsPath ??= '/etc/blackcat/db.credentials.json';
+$auditDir ??= '/var/lib/blackcat/audit-chain';
 
 // Default peer allowlist (best-effort): allow only www-data uid when available.
 if ($allowedPeerUids === []) {
@@ -346,6 +374,7 @@ if ($allowedPeerUids === []) {
 
 $socketPath = trim($socketPath);
 $keysDir = trim($keysDir);
+$auditDir = trim($auditDir);
 
 if ($socketPath === '' || str_contains($socketPath, "\0")) {
     throw new \RuntimeException('Invalid socket path.');
@@ -355,6 +384,9 @@ if ($keysDir === '' || str_contains($keysDir, "\0")) {
 }
 if ($dbCredsPath === '' || str_contains($dbCredsPath, "\0")) {
     throw new \RuntimeException('Invalid db credentials file path.');
+}
+if ($auditDir === '' || str_contains($auditDir, "\0")) {
+    throw new \RuntimeException('Invalid audit dir path.');
 }
 
 assertSecureDir(dirname($socketPath), 'socket_parent');
@@ -404,6 +436,30 @@ assertSecureDir(dirname($dbCredsPath), 'db_credentials_parent');
 
 if (!is_file($dbCredsPath)) {
     out('[secrets-agent] WARN: db credentials file not found: ' . $dbCredsPath);
+}
+
+if (is_link($auditDir)) {
+    throw new \RuntimeException('Refusing to use symlink audit dir: ' . $auditDir);
+}
+if (!is_dir($auditDir)) {
+    // Best-effort create; running as root in secrets-agent mode.
+    @mkdir($auditDir, 0750, true);
+    @chmod($auditDir, 0750);
+    if (DIRECTORY_SEPARATOR !== '\\') {
+        $gid = @filegroup(dirname($auditDir));
+        if (is_int($gid) && $gid >= 0) {
+            @chgrp($auditDir, $gid);
+        }
+    }
+}
+try {
+    assertSecureDir(dirname($auditDir), 'audit_parent');
+    assertSecureDir($auditDir, 'audit_dir');
+    $auditChain = new AuditChain($auditDir);
+    out('[secrets-agent] audit_chain=' . $auditDir);
+} catch (\Throwable $e) {
+    $auditChain = null;
+    out('[secrets-agent] WARN: audit chain disabled: ' . $e->getMessage());
 }
 
 /**
@@ -468,15 +524,23 @@ while (true) {
 
     $peerInfo = peerInfo($conn);
     $peer = peerKey($peerInfo);
+    $actor = [
+        'uid' => $peerInfo['uid'] ?? null,
+        'gid' => $peerInfo['gid'] ?? null,
+        'pid' => $peerInfo['pid'] ?? null,
+        'peer' => $peer,
+    ];
 
     if ($peerCredRequired) {
         $uid = $peerInfo['uid'] ?? null;
         if (!is_int($uid)) {
+            auditAppend($auditChain, 'secrets_agent.reject.peercred_unavailable', $actor, []);
             fwrite($conn, json_encode(['ok' => false, 'error' => 'peercred_unavailable']) . "\n");
             fclose($conn);
             continue;
         }
         if ($allowedPeerUids !== [] && !in_array($uid, $allowedPeerUids, true)) {
+            auditAppend($auditChain, 'secrets_agent.reject.peercred_uid_not_allowed', $actor, []);
             fwrite($conn, json_encode(['ok' => false, 'error' => 'peercred_uid_not_allowed']) . "\n");
             fclose($conn);
             continue;
@@ -487,6 +551,7 @@ while (true) {
 
     $line = stream_get_line($conn, $maxLine, "\n");
     if (!is_string($line) || trim($line) === '') {
+        auditAppend($auditChain, 'secrets_agent.reject.empty_request', $actor, []);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'empty_request']) . "\n");
         fclose($conn);
         continue;
@@ -496,12 +561,14 @@ while (true) {
         /** @var mixed $req */
         $req = json_decode($line, true, 64, JSON_THROW_ON_ERROR);
     } catch (\JsonException) {
+        auditAppend($auditChain, 'secrets_agent.reject.bad_json', $actor, []);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_json']) . "\n");
         fclose($conn);
         continue;
     }
 
     if (!is_array($req)) {
+        auditAppend($auditChain, 'secrets_agent.reject.bad_request', $actor, []);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_request']) . "\n");
         fclose($conn);
         continue;
@@ -516,6 +583,7 @@ while (true) {
         && $op !== 'hmac_latest'
         && $op !== 'hmac_candidates'
     ) {
+        auditAppend($auditChain, 'secrets_agent.reject.unsupported_op', $actor, []);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'unsupported_op']) . "\n");
         fclose($conn);
         continue;
@@ -526,6 +594,7 @@ while (true) {
         $uid = is_int($uid) ? $uid : null;
 
         if (!$limiterAllow($uid, (string) $op)) {
+            auditAppend($auditChain, 'secrets_agent.reject.rate_limited', $actor, ['op' => (string) $op]);
             fwrite($conn, json_encode(['ok' => false, 'error' => 'rate_limited']) . "\n");
             fclose($conn);
             continue;
@@ -533,6 +602,9 @@ while (true) {
 
         if ($op === 'get_all_keys') {
             if ($agentMode !== 'keys') {
+                auditAppend($auditChain, 'secrets_agent.reject.key_export_disabled', $actor, [
+                    'basename' => is_string($req['basename'] ?? null) ? (string) $req['basename'] : null,
+                ]);
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'key_export_disabled']) . "\n");
                 fclose($conn);
                 continue;
@@ -589,6 +661,10 @@ while (true) {
             $peerAuditKey = $peer . '|' . $auditKey;
             $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
             out('[secrets-agent] audit ' . $peer . ' op=get_all_keys basename=' . $basename . ' versions=' . count($outKeys) . ' total=' . $audit[$peerAuditKey]);
+            auditAppend($auditChain, 'secrets_agent.get_all_keys', $actor, [
+                'basename' => $basename,
+                'versions' => count($outKeys),
+            ]);
 
             fwrite($conn, json_encode(['ok' => true, 'keys' => $outKeys], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
             fclose($conn);
@@ -671,6 +747,12 @@ while (true) {
             $peerAuditKey = $peer . '|' . $auditKey;
             $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
             out('[secrets-agent] audit ' . $peer . ' op=crypto_encrypt basename=' . $basename . ' total=' . $audit[$peerAuditKey]);
+            auditAppend($auditChain, 'secrets_agent.crypto_encrypt', $actor, [
+                'basename' => $basename,
+                'plaintext_len' => strlen($plain),
+                'ciphertext_len' => strlen($out),
+                'key_version' => $latestVer,
+            ]);
 
             fwrite(
                 $conn,
@@ -778,6 +860,12 @@ while (true) {
             $peerAuditKey = $peer . '|' . $auditKey;
             $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
             out('[secrets-agent] audit ' . $peer . ' op=crypto_decrypt basename=' . $basename . ' ok=' . ($plain !== null ? 'true' : 'false') . ' total=' . $audit[$peerAuditKey]);
+            auditAppend($auditChain, 'secrets_agent.crypto_decrypt', $actor, [
+                'basename' => $basename,
+                'ciphertext_len' => strlen($ciphertext),
+                'ok' => $plain !== null,
+                'key_version' => $usedVer,
+            ]);
 
             if ($plain === null) {
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'decrypt_failed']) . "\n");
@@ -872,6 +960,11 @@ while (true) {
                 $peerAuditKey = $peer . '|' . $auditKey;
                 $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
                 out('[secrets-agent] audit ' . $peer . ' op=hmac_latest basename=' . $basename . ' total=' . $audit[$peerAuditKey]);
+                auditAppend($auditChain, 'secrets_agent.hmac_latest', $actor, [
+                    'basename' => $basename,
+                    'data_len' => strlen($data),
+                    'key_version' => $latestVer,
+                ]);
 
                 fwrite(
                     $conn,
@@ -933,6 +1026,11 @@ while (true) {
             $peerAuditKey = $peer . '|' . $auditKey;
             $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
             out('[secrets-agent] audit ' . $peer . ' op=hmac_candidates basename=' . $basename . ' count=' . count($outHashes) . ' total=' . $audit[$peerAuditKey]);
+            auditAppend($auditChain, 'secrets_agent.hmac_candidates', $actor, [
+                'basename' => $basename,
+                'data_len' => strlen($data),
+                'count' => count($outHashes),
+            ]);
 
             fwrite(
                 $conn,
@@ -998,6 +1096,9 @@ while (true) {
         $peerAuditKey = $peer . '|' . $auditKey;
         $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
         out('[secrets-agent] audit ' . $peer . ' op=get_db_credentials role=' . $role . ' total=' . $audit[$peerAuditKey]);
+        auditAppend($auditChain, 'secrets_agent.get_db_credentials', $actor, [
+            'role' => $role,
+        ]);
 
         fwrite(
             $conn,
@@ -1015,8 +1116,10 @@ while (true) {
         continue;
 
     } catch (TrustKernelException) {
+        auditAppend($auditChain, 'secrets_agent.reject.denied', $actor, ['op' => (string) $op]);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'denied']) . "\n");
     } catch (\Throwable $e) {
+        auditAppend($auditChain, 'secrets_agent.error', $actor, ['op' => (string) $op, 'error' => $e->getMessage()]);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'agent_error:' . $e->getMessage()]) . "\n");
     } finally {
         fclose($conn);

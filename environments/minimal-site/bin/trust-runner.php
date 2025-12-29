@@ -7,6 +7,7 @@ require '/srv/blackcat/vendor/autoload.php';
 use BlackCat\Config\Runtime\Config;
 use BlackCat\Core\TrustKernel\Bytes32;
 use BlackCat\Core\TrustKernel\CanonicalJson;
+use BlackCat\Core\TrustKernel\AuditChain;
 use BlackCat\Core\TrustKernel\TrustKernelBootstrap;
 use BlackCat\Core\TrustKernel\TxOutbox;
 
@@ -47,16 +48,28 @@ if ($checkInIntervalSec > 86400) {
 $emitIncidents = getenv('BLACKCAT_TRUST_RUNNER_EMIT_INCIDENTS');
 $emitIncidents = $emitIncidents === false ? true : ($emitIncidents !== '0');
 
+$auditAnchorIntervalRaw = getenv('BLACKCAT_TRUST_RUNNER_AUDIT_ANCHOR_INTERVAL_SEC');
+$auditAnchorIntervalSec = is_string($auditAnchorIntervalRaw) && ctype_digit($auditAnchorIntervalRaw) ? (int) $auditAnchorIntervalRaw : 60;
+if ($auditAnchorIntervalSec < 0) {
+    $auditAnchorIntervalSec = 0;
+}
+if ($auditAnchorIntervalSec > 86400) {
+    $auditAnchorIntervalSec = 86400;
+}
+
 $lastCheckInEnqueuedAt = 0;
 $lastIncidentHash = null;
 $lastIncidentEnqueuedAt = 0;
+$lastAuditAnchorEnqueuedAt = 0;
+$lastAuditHeadHash = null;
 
 fwrite(STDERR, sprintf(
-    "[trust-runner] interval=%ds log_every=%ds sabotage_after=%ds checkin_interval=%ds\n",
+    "[trust-runner] interval=%ds log_every=%ds sabotage_after=%ds checkin_interval=%ds audit_anchor_interval=%ds\n",
     $intervalSec,
     $logEverySec,
     $sabotageAfterSec,
     $checkInIntervalSec,
+    $auditAnchorIntervalSec,
 ));
 
 while (true) {
@@ -78,6 +91,60 @@ while (true) {
 
         $outbox = TxOutbox::fromRuntimeConfigBestEffort();
         if ($outbox !== null) {
+            // ===== Audit-chain anchoring (recommended) =====
+            if ($auditAnchorIntervalSec > 0 && ($now - $lastAuditAnchorEnqueuedAt) >= $auditAnchorIntervalSec) {
+                try {
+                    $audit = AuditChain::fromRuntimeConfigBestEffort();
+                    $head = $audit?->head();
+                    $headHash = is_array($head) ? ($head['head_hash'] ?? null) : null;
+                    $seq = is_array($head) ? ($head['seq'] ?? null) : null;
+
+                    if (is_string($headHash) && is_int($seq) && $seq > 0) {
+                        $headHash = Bytes32::normalizeHex($headHash);
+                        if (!is_string($lastAuditHeadHash) || !hash_equals($lastAuditHeadHash, $headHash)) {
+                            $controller = Config::get('trust.web3.contracts.instance_controller');
+                            $controller = is_string($controller) ? trim($controller) : '';
+
+                            if (is_string($controller) && preg_match('/^0x[a-fA-F0-9]{40}$/', $controller)) {
+                                $preimage = [
+                                    'schema_version' => 1,
+                                    'type' => 'blackcat.audit_chain.anchor',
+                                    'controller' => $controller,
+                                    'audit_seq' => $seq,
+                                    'audit_head_hash' => $headHash,
+                                ];
+
+                                $anchorHash = CanonicalJson::sha256Bytes32($preimage);
+                                $payload = [
+                                    'schema_version' => 1,
+                                    'type' => 'blackcat.tx_request',
+                                    'created_at' => gmdate('c'),
+                                    'to' => $controller,
+                                    'method' => 'reportIncident(bytes32)',
+                                    'args' => [$anchorHash],
+                                    'meta' => [
+                                        'source' => 'trust-runner',
+                                        'kind' => 'audit_anchor',
+                                        'audit' => [
+                                            'seq' => $seq,
+                                            'head_hash' => $headHash,
+                                        ],
+                                        'preimage' => $preimage,
+                                    ],
+                                ];
+
+                                $written = $outbox->enqueue($payload);
+                                $lastAuditAnchorEnqueuedAt = $now;
+                                $lastAuditHeadHash = $headHash;
+                                fwrite(STDERR, "[trust-runner] outbox: queued audit anchor tx: {$written}\n");
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    fwrite(STDERR, "[trust-runner] WARN: audit chain anchor failed: " . $e->getMessage() . "\n");
+                }
+            }
+
             // ===== On-chain "check-in" (optional) =====
             if (
                 $checkInIntervalSec > 0

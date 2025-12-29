@@ -21,8 +21,10 @@ mkdir -p /etc/blackcat
 chmod 0750 /etc/blackcat || true
 
 mkdir -p /var/lib/blackcat/tx-outbox || true
+mkdir -p /var/lib/blackcat/audit-chain || true
 chmod 0750 /var/lib/blackcat || true
 chmod 0770 /var/lib/blackcat/tx-outbox || true
+chmod 0750 /var/lib/blackcat/audit-chain || true
 chgrp -R www-data /var/lib/blackcat >/dev/null 2>&1 || true
 
 ROOT_DIR="/srv/blackcat"
@@ -89,6 +91,9 @@ php -r '
           "instance_controller" => (string) getenv("INSTANCE_CONTROLLER"),
         ],
         "tx_outbox_dir" => "/var/lib/blackcat/tx-outbox",
+      ],
+      "audit" => [
+        "dir" => "/var/lib/blackcat/audit-chain",
       ],
     ],
   ];

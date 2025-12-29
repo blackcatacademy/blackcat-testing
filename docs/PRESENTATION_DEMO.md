@@ -197,10 +197,20 @@ Security note:
 
 By default, the runner will queue an anonymized incident report when trust fails (into `trust.web3.tx_outbox_dir`).
 
+Additionally, the secrets-agent maintains a **tamper-evident audit chain** (hash chain) under `trust.audit.dir`.
+The runner can periodically anchor its rolling head hash to the chain (also via tx outbox).
+
 If you also want periodic on-chain check-ins (positive “I am healthy” signals), set:
 
 ```bash
 BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC=60 \
+docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
+```
+
+If you also want periodic audit-chain anchors (recommended), set:
+
+```bash
+BLACKCAT_TRUST_RUNNER_AUDIT_ANCHOR_INTERVAL_SEC=60 \
 docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
 ```
 
