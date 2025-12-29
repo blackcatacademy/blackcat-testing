@@ -162,6 +162,9 @@ $socketPath = null;
 $keysDir = null;
 $dbCredsPath = null;
 $kernel = null;
+$peerCredRequired = true;
+/** @var list<int> */
+$allowedPeerUids = [];
 
 /**
  * @return array{uid:?int,gid:?int,pid:?int,peer:?string}
@@ -246,6 +249,31 @@ try {
         if ($dbCredsRaw !== null) {
             $dbCredsPath = $repo->resolvePath($dbCredsRaw);
         }
+
+        $peerReqRaw = $repo->get('crypto.agent.require_peercred');
+        if (is_bool($peerReqRaw)) {
+            $peerCredRequired = $peerReqRaw;
+        } elseif (is_int($peerReqRaw)) {
+            $peerCredRequired = $peerReqRaw !== 0;
+        } elseif (is_string($peerReqRaw)) {
+            $peerCredRequired = trim($peerReqRaw) !== '' && trim($peerReqRaw) !== '0';
+        }
+
+        $uidsRaw = $repo->get('crypto.agent.allowed_peer_uids');
+        if (is_array($uidsRaw)) {
+            $uids = [];
+            foreach ($uidsRaw as $v) {
+                if (is_int($v) && $v >= 0) {
+                    $uids[] = $v;
+                    continue;
+                }
+                if (is_string($v) && ctype_digit(trim($v))) {
+                    $uids[] = (int) trim($v);
+                    continue;
+                }
+            }
+            $allowedPeerUids = array_values(array_unique($uids));
+        }
     }
 } catch (\Throwable $e) {
     out('[secrets-agent] WARN: runtime config read failed: ' . $e->getMessage());
@@ -254,6 +282,20 @@ try {
 $socketPath ??= '/etc/blackcat/secrets-agent.sock';
 $keysDir ??= '/etc/blackcat/keys';
 $dbCredsPath ??= '/etc/blackcat/db.credentials.json';
+
+// Default peer allowlist (best-effort): allow only www-data uid when available.
+if ($allowedPeerUids === []) {
+    if (function_exists('posix_getpwnam')) {
+        /** @var array<string,mixed>|false $pw */
+        $pw = @posix_getpwnam('www-data');
+        if (is_array($pw) && isset($pw['uid']) && is_int($pw['uid']) && $pw['uid'] >= 0) {
+            $allowedPeerUids = [(int) $pw['uid']];
+        }
+    }
+    if ($allowedPeerUids === []) {
+        $allowedPeerUids = [33];
+    }
+}
 
 $socketPath = trim($socketPath);
 $keysDir = trim($keysDir);
@@ -294,6 +336,7 @@ if (!is_resource($server)) {
 
 out('[secrets-agent] listening on ' . $socketPath);
 out('[secrets-agent] keys_dir=' . $keysDir);
+out('[secrets-agent] peercred_required=' . ($peerCredRequired ? 'true' : 'false') . ' allowed_peer_uids=' . implode(',', $allowedPeerUids));
 
 // Hard cap to avoid abuse.
 $maxLine = 8 * 1024;
@@ -327,7 +370,23 @@ while (true) {
         continue;
     }
 
-    $peer = peerKey(peerInfo($conn));
+    $peerInfo = peerInfo($conn);
+    $peer = peerKey($peerInfo);
+
+    if ($peerCredRequired) {
+        $uid = $peerInfo['uid'] ?? null;
+        if (!is_int($uid)) {
+            fwrite($conn, json_encode(['ok' => false, 'error' => 'peercred_unavailable']) . "\n");
+            fclose($conn);
+            continue;
+        }
+        if ($allowedPeerUids !== [] && !in_array($uid, $allowedPeerUids, true)) {
+            fwrite($conn, json_encode(['ok' => false, 'error' => 'peercred_uid_not_allowed']) . "\n");
+            fclose($conn);
+            continue;
+        }
+    }
+
     stream_set_timeout($conn, 2);
 
     $line = stream_get_line($conn, $maxLine, "\n");

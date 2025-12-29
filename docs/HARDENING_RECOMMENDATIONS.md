@@ -12,6 +12,10 @@ runtime*:
 
 That is why the demo uses a root-owned **secrets-agent** over a UNIX socket.
 
+Additional hardening in the demo:
+- the agent enforces **peer credentials** (`SO_PEERCRED`) and allows only the web runtime UID (default: `www-data`)
+  to call the socket. This reduces cross-user exfil if multiple users/processes exist on the same host.
+
 Why this is not mandatory everywhere:
 - Some platforms (shared hosting / locked-down PaaS / non-Linux) cannot run local agents, UNIX sockets, or multiple
   processes/users safely.

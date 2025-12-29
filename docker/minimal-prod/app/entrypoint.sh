@@ -94,10 +94,22 @@ php -r '
   ];
 
   if (getenv("ENABLE_SECRETS_AGENT") === "1") {
+    $wwwUid = 33;
+    if (function_exists("posix_getpwnam")) {
+      $pw = @posix_getpwnam("www-data");
+      if (is_array($pw) && isset($pw["uid"]) && is_int($pw["uid"])) {
+        $wwwUid = (int) $pw["uid"];
+      }
+    }
+
     $cfg["crypto"] = [
       "keys_dir" => "/etc/blackcat/keys",
       "agent" => [
         "socket_path" => "/etc/blackcat/secrets-agent.sock",
+        // Hardening: allow only the web runtime user to call the UNIX socket (Linux SO_PEERCRED).
+        // This reduces cross-user exfil if multiple users/processes exist on the same host.
+        "require_peercred" => true,
+        "allowed_peer_uids" => [$wwwUid],
       ],
     ];
 
