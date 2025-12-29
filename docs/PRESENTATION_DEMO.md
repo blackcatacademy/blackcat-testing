@@ -199,6 +199,7 @@ By default, the runner will queue an anonymized incident report when trust fails
 
 Additionally, the secrets-agent maintains a **tamper-evident audit chain** (hash chain) under `trust.audit.dir`.
 The runner can periodically anchor its rolling head hash to the chain (also via tx outbox).
+This is disabled by default to avoid unintended on-chain spam/cost.
 
 If you also want periodic on-chain check-ins (positive “I am healthy” signals), set:
 

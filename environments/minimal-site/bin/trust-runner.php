@@ -49,7 +49,7 @@ $emitIncidents = getenv('BLACKCAT_TRUST_RUNNER_EMIT_INCIDENTS');
 $emitIncidents = $emitIncidents === false ? true : ($emitIncidents !== '0');
 
 $auditAnchorIntervalRaw = getenv('BLACKCAT_TRUST_RUNNER_AUDIT_ANCHOR_INTERVAL_SEC');
-$auditAnchorIntervalSec = is_string($auditAnchorIntervalRaw) && ctype_digit($auditAnchorIntervalRaw) ? (int) $auditAnchorIntervalRaw : 60;
+$auditAnchorIntervalSec = is_string($auditAnchorIntervalRaw) && ctype_digit($auditAnchorIntervalRaw) ? (int) $auditAnchorIntervalRaw : 0;
 if ($auditAnchorIntervalSec < 0) {
     $auditAnchorIntervalSec = 0;
 }
