@@ -165,6 +165,11 @@ $kernel = null;
 $peerCredRequired = true;
 /** @var list<int> */
 $allowedPeerUids = [];
+$agentMode = 'keyless';
+$limiterEnabled = true;
+$limiterDefaultRpm = 6000;
+/** @var array<string,int> */
+$limiterOpRpm = [];
 
 /**
  * @return array{uid:?int,gid:?int,pid:?int,peer:?string}
@@ -274,6 +279,48 @@ try {
             }
             $allowedPeerUids = array_values(array_unique($uids));
         }
+
+        $modeRaw = $repo->get('crypto.agent.mode');
+        if (is_string($modeRaw) && trim($modeRaw) !== '') {
+            $agentMode = strtolower(trim($modeRaw));
+        }
+
+        $limEnabledRaw = $repo->get('crypto.agent.limiter.enabled');
+        if (is_bool($limEnabledRaw)) {
+            $limiterEnabled = $limEnabledRaw;
+        } elseif (is_int($limEnabledRaw)) {
+            $limiterEnabled = $limEnabledRaw !== 0;
+        } elseif (is_string($limEnabledRaw)) {
+            $limiterEnabled = trim($limEnabledRaw) !== '' && trim($limEnabledRaw) !== '0';
+        }
+
+        $limDefaultRaw = $repo->get('crypto.agent.limiter.default_rpm');
+        if (is_int($limDefaultRaw) && $limDefaultRaw > 0) {
+            $limiterDefaultRpm = $limDefaultRaw;
+        } elseif (is_string($limDefaultRaw) && ctype_digit(trim($limDefaultRaw))) {
+            $limiterDefaultRpm = max(1, (int) trim($limDefaultRaw));
+        }
+
+        $limOpsRaw = $repo->get('crypto.agent.limiter.op_rpm');
+        if (is_array($limOpsRaw)) {
+            $out = [];
+            foreach ($limOpsRaw as $k => $v) {
+                if (!is_string($k) || $k === '' || str_contains($k, "\0")) {
+                    continue;
+                }
+                $rpm = null;
+                if (is_int($v)) {
+                    $rpm = $v;
+                } elseif (is_string($v) && ctype_digit(trim($v))) {
+                    $rpm = (int) trim($v);
+                }
+                if ($rpm === null || $rpm < 0) {
+                    continue;
+                }
+                $out[strtolower(trim($k))] = $rpm;
+            }
+            $limiterOpRpm = $out;
+        }
     }
 } catch (\Throwable $e) {
     out('[secrets-agent] WARN: runtime config read failed: ' . $e->getMessage());
@@ -337,10 +384,12 @@ if (!is_resource($server)) {
 out('[secrets-agent] listening on ' . $socketPath);
 out('[secrets-agent] keys_dir=' . $keysDir);
 out('[secrets-agent] peercred_required=' . ($peerCredRequired ? 'true' : 'false') . ' allowed_peer_uids=' . implode(',', $allowedPeerUids));
+out('[secrets-agent] mode=' . $agentMode . ' limiter=' . ($limiterEnabled ? 'on' : 'off') . ' default_rpm=' . $limiterDefaultRpm);
 
 // Hard cap to avoid abuse.
-$maxLine = 8 * 1024;
+$maxLine = 64 * 1024;
 $maxKeyBytes = 4096;
+$maxDataBytes = 32 * 1024;
 
 if (is_link($keysDir)) {
     throw new \RuntimeException('Refusing to use symlink keys_dir: ' . $keysDir);
@@ -363,6 +412,53 @@ if (!is_file($dbCredsPath)) {
  * @var array<string,int>
  */
 $audit = [];
+
+/**
+ * Best-effort in-process token buckets for rate limiting.
+ *
+ * @var array<string,array{tokens:float,updated_at:float}>
+ */
+$buckets = [];
+
+/**
+ * @return bool true when allowed
+ */
+$limiterAllow = static function (?int $uid, string $op) use (&$buckets, $limiterEnabled, $limiterDefaultRpm, $limiterOpRpm): bool {
+    if (!$limiterEnabled) {
+        return true;
+    }
+
+    $op = strtolower(trim($op));
+    if ($op === '' || str_contains($op, "\0")) {
+        return false;
+    }
+
+    $rpm = $limiterOpRpm[$op] ?? $limiterDefaultRpm;
+    if (!is_int($rpm) || $rpm <= 0) {
+        return false;
+    }
+
+    $bucketKey = (is_int($uid) ? ('uid=' . $uid) : 'uid=unknown') . '|op=' . $op;
+    $now = microtime(true);
+    $ratePerSec = $rpm / 60.0;
+    $burst = (float) $rpm;
+
+    $b = $buckets[$bucketKey] ?? ['tokens' => $burst, 'updated_at' => $now];
+    $elapsed = $now - $b['updated_at'];
+    if ($elapsed > 0) {
+        $b['tokens'] = min($burst, $b['tokens'] + ($elapsed * $ratePerSec));
+        $b['updated_at'] = $now;
+    }
+
+    if ($b['tokens'] < 1.0) {
+        $buckets[$bucketKey] = $b;
+        return false;
+    }
+
+    $b['tokens'] -= 1.0;
+    $buckets[$bucketKey] = $b;
+    return true;
+};
 
 while (true) {
     $conn = @stream_socket_accept($server, -1);
@@ -412,14 +508,36 @@ while (true) {
     }
 
     $op = $req['op'] ?? null;
-    if ($op !== 'get_all_keys' && $op !== 'get_db_credentials') {
+    if (
+        $op !== 'get_all_keys'
+        && $op !== 'get_db_credentials'
+        && $op !== 'crypto_encrypt'
+        && $op !== 'crypto_decrypt'
+        && $op !== 'hmac_latest'
+        && $op !== 'hmac_candidates'
+    ) {
         fwrite($conn, json_encode(['ok' => false, 'error' => 'unsupported_op']) . "\n");
         fclose($conn);
         continue;
     }
 
     try {
+        $uid = $peerInfo['uid'] ?? null;
+        $uid = is_int($uid) ? $uid : null;
+
+        if (!$limiterAllow($uid, (string) $op)) {
+            fwrite($conn, json_encode(['ok' => false, 'error' => 'rate_limited']) . "\n");
+            fclose($conn);
+            continue;
+        }
+
         if ($op === 'get_all_keys') {
+            if ($agentMode !== 'keys') {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'key_export_disabled']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
             $basename = $req['basename'] ?? null;
             if (!is_string($basename)) {
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_basename']) . "\n");
@@ -473,6 +591,359 @@ while (true) {
             out('[secrets-agent] audit ' . $peer . ' op=get_all_keys basename=' . $basename . ' versions=' . count($outKeys) . ' total=' . $audit[$peerAuditKey]);
 
             fwrite($conn, json_encode(['ok' => true, 'keys' => $outKeys], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+            fclose($conn);
+            continue;
+        }
+
+        if ($op === 'crypto_encrypt') {
+            $basename = $req['basename'] ?? null;
+            $plaintextB64 = $req['plaintext_b64'] ?? null;
+
+            if (!is_string($basename) || !is_string($plaintextB64)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_request']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $basename = trim($basename);
+            if ($basename === '' || str_contains($basename, "\0") || !preg_match('/^[a-z0-9_]{1,64}$/', $basename)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_basename']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $allow = keyBasenameAllowlist();
+            if (!array_key_exists($basename, $allow)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
+                fclose($conn);
+                continue;
+            }
+            $expectedLen = (int) $allow[$basename];
+            if ($expectedLen < 1 || $expectedLen > $maxKeyBytes) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_policy_invalid']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $plain = base64_decode($plaintextB64, true);
+            if (!is_string($plain)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_plaintext_b64']) . "\n");
+                fclose($conn);
+                continue;
+            }
+            if (strlen($plain) > $maxDataBytes) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'payload_too_large']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            if ($kernel instanceof TrustKernel) {
+                $kernel->assertReadAllowed('secrets-agent:crypto_encrypt');
+            }
+
+            $versions = KeyManager::listKeyVersions($keysDir, $basename);
+            $latestVer = array_key_last($versions);
+            $latestPath = is_string($latestVer) ? ($versions[$latestVer] ?? null) : null;
+            if (!is_string($latestVer) || !is_string($latestPath)) {
+                throw new \RuntimeException('key_not_found');
+            }
+
+            assertSecureFile($latestPath, 'key_file', $expectedLen);
+            $key = @file_get_contents($latestPath);
+            if (!is_string($key) || strlen($key) !== $expectedLen) {
+                throw new \RuntimeException('key_read_failed');
+            }
+
+            $nonceLen = SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES;
+            $nonce = random_bytes($nonceLen);
+            $ad = 'app:crypto:v1';
+            $cipher = sodium_crypto_aead_xchacha20poly1305_ietf_encrypt($plain, $ad, $nonce, $key);
+
+            // Best-effort wipe key copy.
+            try {
+                KeyManager::memzero($key);
+            } catch (\Throwable) {
+            }
+
+            $out = base64_encode($nonce . $cipher);
+
+            $auditKey = 'crypto_encrypt:' . $basename;
+            $peerAuditKey = $peer . '|' . $auditKey;
+            $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
+            out('[secrets-agent] audit ' . $peer . ' op=crypto_encrypt basename=' . $basename . ' total=' . $audit[$peerAuditKey]);
+
+            fwrite(
+                $conn,
+                json_encode(
+                    [
+                        'ok' => true,
+                        'ciphertext' => $out,
+                        'key_version' => $latestVer,
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                ) . "\n"
+            );
+            fclose($conn);
+            continue;
+        }
+
+        if ($op === 'crypto_decrypt') {
+            $basename = $req['basename'] ?? null;
+            $ciphertext = $req['ciphertext'] ?? null;
+
+            if (!is_string($basename) || !is_string($ciphertext)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_request']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $basename = trim($basename);
+            if ($basename === '' || str_contains($basename, "\0") || !preg_match('/^[a-z0-9_]{1,64}$/', $basename)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_basename']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $allow = keyBasenameAllowlist();
+            if (!array_key_exists($basename, $allow)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
+                fclose($conn);
+                continue;
+            }
+            $expectedLen = (int) $allow[$basename];
+            if ($expectedLen < 1 || $expectedLen > $maxKeyBytes) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_policy_invalid']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $decoded = base64_decode($ciphertext, true);
+            if (!is_string($decoded)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_ciphertext']) . "\n");
+                fclose($conn);
+                continue;
+            }
+            if (strlen($decoded) > $maxDataBytes + 1024) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'payload_too_large']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $nonceLen = SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES;
+            if (strlen($decoded) < $nonceLen + SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_ABYTES) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_ciphertext']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $nonce = substr($decoded, 0, $nonceLen);
+            $cipher = substr($decoded, $nonceLen);
+            $ad = 'app:crypto:v1';
+
+            if ($kernel instanceof TrustKernel) {
+                $kernel->assertReadAllowed('secrets-agent:crypto_decrypt');
+            }
+
+            $versions = KeyManager::listKeyVersions($keysDir, $basename);
+            $plain = null;
+            $usedVer = null;
+            $vers = array_keys($versions);
+            for ($i = count($vers) - 1; $i >= 0; $i--) {
+                $ver = $vers[$i];
+                $path = $versions[$ver] ?? null;
+                if (!is_string($ver) || !is_string($path)) {
+                    continue;
+                }
+
+                assertSecureFile($path, 'key_file', $expectedLen);
+                $key = @file_get_contents($path);
+                if (!is_string($key) || strlen($key) !== $expectedLen) {
+                    continue;
+                }
+
+                $res = @sodium_crypto_aead_xchacha20poly1305_ietf_decrypt($cipher, $ad, $nonce, $key);
+                try {
+                    KeyManager::memzero($key);
+                } catch (\Throwable) {
+                }
+
+                if ($res !== false) {
+                    $plain = $res;
+                    $usedVer = $ver;
+                    break;
+                }
+            }
+
+            $auditKey = 'crypto_decrypt:' . $basename;
+            $peerAuditKey = $peer . '|' . $auditKey;
+            $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
+            out('[secrets-agent] audit ' . $peer . ' op=crypto_decrypt basename=' . $basename . ' ok=' . ($plain !== null ? 'true' : 'false') . ' total=' . $audit[$peerAuditKey]);
+
+            if ($plain === null) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'decrypt_failed']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            fwrite(
+                $conn,
+                json_encode(
+                    [
+                        'ok' => true,
+                        'plaintext_b64' => base64_encode($plain),
+                        'key_version' => $usedVer,
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                ) . "\n"
+            );
+            fclose($conn);
+            continue;
+        }
+
+        if ($op === 'hmac_latest' || $op === 'hmac_candidates') {
+            $basename = $req['basename'] ?? null;
+            $dataB64 = $req['data_b64'] ?? null;
+
+            if (!is_string($basename) || !is_string($dataB64)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_request']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $basename = trim($basename);
+            if ($basename === '' || str_contains($basename, "\0") || !preg_match('/^[a-z0-9_]{1,64}$/', $basename)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_basename']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $allow = keyBasenameAllowlist();
+            if (!array_key_exists($basename, $allow)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
+                fclose($conn);
+                continue;
+            }
+            $expectedLen = (int) $allow[$basename];
+            if ($expectedLen < 1 || $expectedLen > $maxKeyBytes) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_policy_invalid']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $data = base64_decode($dataB64, true);
+            if (!is_string($data)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_data_b64']) . "\n");
+                fclose($conn);
+                continue;
+            }
+            if (strlen($data) > $maxDataBytes) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'payload_too_large']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            if ($kernel instanceof TrustKernel) {
+                $kernel->assertReadAllowed('secrets-agent:hmac');
+            }
+
+            $versions = KeyManager::listKeyVersions($keysDir, $basename);
+            $vers = array_keys($versions);
+
+            if ($op === 'hmac_latest') {
+                $latestVer = array_key_last($versions);
+                $latestPath = is_string($latestVer) ? ($versions[$latestVer] ?? null) : null;
+                if (!is_string($latestVer) || !is_string($latestPath)) {
+                    throw new \RuntimeException('key_not_found');
+                }
+
+                assertSecureFile($latestPath, 'key_file', $expectedLen);
+                $key = @file_get_contents($latestPath);
+                if (!is_string($key) || strlen($key) !== $expectedLen) {
+                    throw new \RuntimeException('key_read_failed');
+                }
+
+                $hash = hash_hmac('sha256', $data, $key, true);
+                try {
+                    KeyManager::memzero($key);
+                } catch (\Throwable) {
+                }
+
+                $auditKey = 'hmac_latest:' . $basename;
+                $peerAuditKey = $peer . '|' . $auditKey;
+                $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
+                out('[secrets-agent] audit ' . $peer . ' op=hmac_latest basename=' . $basename . ' total=' . $audit[$peerAuditKey]);
+
+                fwrite(
+                    $conn,
+                    json_encode(
+                        [
+                            'ok' => true,
+                            'hash_b64' => base64_encode($hash),
+                            'key_version' => $latestVer,
+                        ],
+                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                    ) . "\n"
+                );
+                fclose($conn);
+                continue;
+            }
+
+            $maxCandidates = $req['max_candidates'] ?? 20;
+            if (is_string($maxCandidates) && ctype_digit(trim($maxCandidates))) {
+                $maxCandidates = (int) trim($maxCandidates);
+            }
+            if (!is_int($maxCandidates)) {
+                $maxCandidates = 20;
+            }
+            $maxCandidates = max(1, min(50, $maxCandidates));
+
+            $outHashes = [];
+            $count = 0;
+            for ($i = count($vers) - 1; $i >= 0; $i--) {
+                if ($count >= $maxCandidates) {
+                    break;
+                }
+
+                $ver = $vers[$i];
+                $path = $versions[$ver] ?? null;
+                if (!is_string($ver) || !is_string($path)) {
+                    continue;
+                }
+
+                assertSecureFile($path, 'key_file', $expectedLen);
+                $key = @file_get_contents($path);
+                if (!is_string($key) || strlen($key) !== $expectedLen) {
+                    continue;
+                }
+
+                $hash = hash_hmac('sha256', $data, $key, true);
+                try {
+                    KeyManager::memzero($key);
+                } catch (\Throwable) {
+                }
+
+                $outHashes[] = [
+                    'key_version' => $ver,
+                    'hash_b64' => base64_encode($hash),
+                ];
+                $count++;
+            }
+
+            $auditKey = 'hmac_candidates:' . $basename;
+            $peerAuditKey = $peer . '|' . $auditKey;
+            $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
+            out('[secrets-agent] audit ' . $peer . ' op=hmac_candidates basename=' . $basename . ' count=' . count($outHashes) . ' total=' . $audit[$peerAuditKey]);
+
+            fwrite(
+                $conn,
+                json_encode(
+                    [
+                        'ok' => true,
+                        'hashes' => $outHashes,
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                ) . "\n"
+            );
             fclose($conn);
             continue;
         }

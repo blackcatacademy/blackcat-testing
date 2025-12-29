@@ -106,10 +106,26 @@ php -r '
       "keys_dir" => "/etc/blackcat/keys",
       "agent" => [
         "socket_path" => "/etc/blackcat/secrets-agent.sock",
+        // Keyless mode: do not export raw key material to the web runtime.
+        // The agent provides encrypt/decrypt/hmac operations instead.
+        "mode" => "keyless",
         // Hardening: allow only the web runtime user to call the UNIX socket (Linux SO_PEERCRED).
         // This reduces cross-user exfil if multiple users/processes exist on the same host.
         "require_peercred" => true,
         "allowed_peer_uids" => [$wwwUid],
+        // Rate limiting (best-effort) to reduce rapid exfil after RCE.
+        "limiter" => [
+          "enabled" => true,
+          "default_rpm" => 6000,
+          "op_rpm" => [
+            "get_all_keys" => 0,
+            "get_db_credentials" => 60,
+            "crypto_encrypt" => 6000,
+            "crypto_decrypt" => 6000,
+            "hmac_latest" => 12000,
+            "hmac_candidates" => 2000,
+          ],
+        ],
       ],
     ];
 

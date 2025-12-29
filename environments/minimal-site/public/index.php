@@ -1182,6 +1182,11 @@ HttpKernel::run(
             }
 
             $shouldBeDenied = !$kernelCtx->status->readAllowed;
+            $modeRaw = Config::get('crypto.agent.mode');
+            $mode = is_string($modeRaw) ? strtolower(trim($modeRaw)) : 'keyless';
+            if ($mode !== 'keys' && $mode !== 'keyless') {
+                $mode = 'keyless';
+            }
 
             $socketPath = trim($socketPath);
             if ($socketPath === '' || str_contains($socketPath, "\0")) {
@@ -1232,6 +1237,10 @@ HttpKernel::run(
                 $keys = $decoded['keys'] ?? null;
                 $count = is_array($keys) ? count($keys) : 0;
                 if ($count > 0) {
+                    if ($mode === 'keyless') {
+                        $sendText(500, 'unexpected: secrets-agent exported keys in keyless mode');
+                        return;
+                    }
                     if ($shouldBeDenied) {
                         $sendText(500, 'unexpected: secrets-agent returned key material while read_allowed=false');
                         return;
@@ -1242,6 +1251,12 @@ HttpKernel::run(
                 }
 
                 $sendText($shouldBeDenied ? 403 : 500, $shouldBeDenied ? 'denied' : 'unexpected: agent returned no keys');
+                return;
+            }
+
+            $err = $decoded['error'] ?? null;
+            if (is_string($err) && $err === 'key_export_disabled') {
+                $sendText(403, 'denied (key export disabled by design)');
                 return;
             }
 
