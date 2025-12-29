@@ -224,7 +224,8 @@ Notes:
 ### Optional: tx-outbox relayer (EOA)
 
 This repo ships an **optional** relayer service that reads the tx-outbox and broadcasts allowlisted contract calls to
-your InstanceController (default allowlist: `reportIncident(bytes32)` + `checkIn(bytes32,bytes32,bytes32)`).
+your InstanceController (default allowlist: `reportIncident(bytes32)`, `checkIn(bytes32,bytes32,bytes32)`,
+`pauseIfStale()`, `pauseIfActiveRootUntrusted()`).
 
 Security note:
 - Never bake a private key into any image. Use a **dedicated demo EOA** and treat it as public/dev.
@@ -250,6 +251,24 @@ docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
+  up --build
+```
+
+### Optional: on-chain watcher (auto-pause safety)
+
+This repo ships an optional watcher that can **queue** permissionless safety calls into the tx-outbox:
+- `pauseIfStale()` (pauses when check-ins are stale beyond `maxCheckInAgeSec`)
+- `pauseIfActiveRootUntrusted()` (pauses when the active root is no longer trusted by `ReleaseRegistry`)
+
+Run it together with the relayer:
+
+```bash
+RELAYER_PRIVATE_KEY=0x... \
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.watcher.yml \
   up --build
 ```
 

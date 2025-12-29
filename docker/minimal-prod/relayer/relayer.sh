@@ -153,7 +153,7 @@ case "$DRY_RUN" in
   *) fail "invalid RELAYER_DRY_RUN (expected 0|1)" ;;
 esac
 
-ALLOWED_METHODS_RAW="${RELAYER_ALLOWED_METHODS:-reportIncident(bytes32),checkIn(bytes32,bytes32,bytes32)}"
+ALLOWED_METHODS_RAW="${RELAYER_ALLOWED_METHODS:-reportIncident(bytes32),checkIn(bytes32,bytes32,bytes32),pauseIfStale(),pauseIfActiveRootUntrusted()}"
 ALLOWED_METHODS="$(printf '%s' "$ALLOWED_METHODS_RAW" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d')"
 if [ "$(printf '%s\n' "$ALLOWED_METHODS" | wc -l | tr -d ' ')" -lt 1 ]; then
   fail "no allowed methods configured"
@@ -250,6 +250,18 @@ while true; do
             is_bytes32 "$a3" || err="invalid bytes32 arg #3"
           fi
           ;;
+        pauseIfStale())
+          c="$(printf '%s\n' "$args" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$c" -ne 0 ]; then
+            err="invalid args count for pauseIfStale: ${c}"
+          fi
+          ;;
+        pauseIfActiveRootUntrusted())
+          c="$(printf '%s\n' "$args" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$c" -ne 0 ]; then
+            err="invalid args count for pauseIfActiveRootUntrusted: ${c}"
+          fi
+          ;;
         *)
           err="unsupported allowlisted method validation: ${method}"
           ;;
@@ -315,4 +327,3 @@ while true; do
 
   sleep "$POLL_INTERVAL_SEC" || true
 done
-

@@ -1,0 +1,28 @@
+services:
+  watcher:
+    build:
+      context: ../../..
+      dockerfile: blackcat-testing/docker/minimal-prod/watcher/Dockerfile
+    environment:
+      WATCHER_POLL_INTERVAL_SEC: "${WATCHER_POLL_INTERVAL_SEC:-10}"
+      WATCHER_DEBOUNCE_SEC: "${WATCHER_DEBOUNCE_SEC:-60}"
+      WATCHER_DRY_RUN: "${WATCHER_DRY_RUN:-0}"
+      WATCHER_ENABLE_STALE_CHECKIN: "${WATCHER_ENABLE_STALE_CHECKIN:-1}"
+      WATCHER_ENABLE_ACTIVE_ROOT_UNTRUSTED: "${WATCHER_ENABLE_ACTIVE_ROOT_UNTRUSTED:-1}"
+      WATCHER_ALLOW_HTTP_LOCALHOST: "${WATCHER_ALLOW_HTTP_LOCALHOST:-0}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    user: "33:33" # www-data
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    volumes:
+      - blackcat_etc:/etc/blackcat:ro
+      - blackcat_var:/var/lib/blackcat
+    depends_on:
+      app:
+        condition: service_started
+

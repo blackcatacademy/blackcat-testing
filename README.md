@@ -73,6 +73,24 @@ docker compose \
   up --build
 ```
 
+### Optional: on-chain watcher (auto-pause safety)
+
+This repo also ships an optional **watcher** that can queue permissionless safety calls:
+- `pauseIfStale()` (pauses when check-ins are stale beyond `maxCheckInAgeSec`)
+- `pauseIfActiveRootUntrusted()` (pauses when the active root is no longer trusted by `ReleaseRegistry`)
+
+The watcher only **queues tx intents** to the tx-outbox; broadcasting still requires the relayer.
+
+```bash
+RELAYER_PRIVATE_KEY=0x... \
+docker compose \
+  -f docker/minimal-prod/docker-compose.yml \
+  -f docker/minimal-prod/docker-compose.demo.yml \
+  -f docker/minimal-prod/docker-compose.relayer.yml \
+  -f docker/minimal-prod/docker-compose.watcher.yml \
+  up --build
+```
+
 ### Optional: hardened filesystem mode
 
 Runs the demo with a read-only container root filesystem and only `/etc/blackcat` + `/var/lib/blackcat` writable:
