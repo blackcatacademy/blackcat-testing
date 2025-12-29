@@ -1031,9 +1031,16 @@ HttpKernel::run(
                     'policy_hash_v4_warn' => $tk->policyHashV4Warn,
                     'policy_hash_v4_strict_v2' => $tk->policyHashV4StrictV2,
                     'policy_hash_v4_warn_v2' => $tk->policyHashV4WarnV2,
+                    'policy_hash_v5_strict' => $tk->policyHashV5Strict,
+                    'policy_hash_v5_warn' => $tk->policyHashV5Warn,
+                    'policy_hash_v5_strict_v2' => $tk->policyHashV5StrictV2,
+                    'policy_hash_v5_warn_v2' => $tk->policyHashV5WarnV2,
                     'runtime_config_value' => $tk->runtimeConfigCanonicalSha256,
                     'attestation_key_v1' => $attV1Key,
                     'attestation_key_v2' => $attV2Key,
+                    'http_allowed_hosts' => Config::get('http.allowed_hosts'),
+                    'http_allowed_hosts_value' => $tk->httpAllowedHostsCanonicalSha256,
+                    'http_allowed_hosts_attestation_key' => $tk->httpAllowedHostsAttestationKeyV1,
                     'composer_lock_path' => $composerLockPath,
                     'composer_lock_value' => $composerLockLocal,
                     'composer_lock_attestation_key' => $composerLockKey,
@@ -1051,6 +1058,12 @@ HttpKernel::run(
                 'on_chain' => [
                     'attestation_v1' => $attV1,
                     'attestation_v2' => $attV2,
+                    'attestation_http_allowed_hosts_v1' => [
+                        'key' => $tk->httpAllowedHostsAttestationKeyV1,
+                        'value' => $ic->attestation($controller, $tk->httpAllowedHostsAttestationKeyV1),
+                        'locked' => $ic->attestationLocked($controller, $tk->httpAllowedHostsAttestationKeyV1),
+                        'updated_at' => $ic->attestationUpdatedAt($controller, $tk->httpAllowedHostsAttestationKeyV1),
+                    ],
                     'attestation_composer_lock_v1' => $composerLockOnChain,
                     'attestation_php_fingerprint_v1' => $phpFingerprintOnChain,
                     'attestation_image_digest_v1' => $imageDigestOnChain,
@@ -1058,6 +1071,7 @@ HttpKernel::run(
                 'notes' => [
                     'To run a live upgrade demo, use blackcat-kernel-contracts Foundry scripts (publish release, set+lock attestation if needed, then propose+activate upgrade).',
                     'Use policy_hash_v3_strict_v2 if the v1 attestation key is already locked and the runtime config changed.',
+                    'Policy v5 additionally binds http.allowed_hosts via an on-chain attestation (defense-in-depth against host allowlist tamper).',
                     'Optional additional attestations (composer.lock / PHP fingerprint / image digest) provide deeper tamper resistance, but increase upgrade discipline (you must update+lock them on upgrades).',
                 ],
             ];

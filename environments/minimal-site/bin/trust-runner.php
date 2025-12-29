@@ -5,6 +5,7 @@ declare(strict_types=1);
 require '/srv/blackcat/vendor/autoload.php';
 
 use BlackCat\Config\Runtime\Config;
+use BlackCat\Core\Security\FilesystemThreatScanner;
 use BlackCat\Core\TrustKernel\Bytes32;
 use BlackCat\Core\TrustKernel\CanonicalJson;
 use BlackCat\Core\TrustKernel\AuditChain;
@@ -57,19 +58,46 @@ if ($auditAnchorIntervalSec > 86400) {
     $auditAnchorIntervalSec = 86400;
 }
 
+$fsScanIntervalRaw = getenv('BLACKCAT_TRUST_RUNNER_FS_SCAN_INTERVAL_SEC');
+$fsScanIntervalSec = is_string($fsScanIntervalRaw) && ctype_digit($fsScanIntervalRaw) ? (int) $fsScanIntervalRaw : 60;
+if ($fsScanIntervalSec < 0) {
+    $fsScanIntervalSec = 0;
+}
+if ($fsScanIntervalSec > 3600) {
+    $fsScanIntervalSec = 3600;
+}
+
+$fsScanDirsRaw = getenv('BLACKCAT_TRUST_RUNNER_FS_SCAN_DIRS');
+$fsScanDirsRaw = $fsScanDirsRaw === false ? '/var/lib/blackcat,/etc/blackcat' : $fsScanDirsRaw;
+$fsScanDirs = [];
+foreach (array_map('trim', explode(',', (string) $fsScanDirsRaw)) as $dir) {
+    if ($dir === '' || str_contains($dir, "\0")) {
+        continue;
+    }
+    $fsScanDirs[] = $dir;
+}
+$fsScanDirs = array_values(array_unique($fsScanDirs));
+if ($fsScanDirs === []) {
+    $fsScanIntervalSec = 0;
+}
+
 $lastCheckInEnqueuedAt = 0;
 $lastIncidentHash = null;
 $lastIncidentEnqueuedAt = 0;
 $lastAuditAnchorEnqueuedAt = 0;
 $lastAuditHeadHash = null;
+$lastFsScanAt = 0;
+$lastFsIncidentHash = null;
+$lastFsIncidentEnqueuedAt = 0;
 
 fwrite(STDERR, sprintf(
-    "[trust-runner] interval=%ds log_every=%ds sabotage_after=%ds checkin_interval=%ds audit_anchor_interval=%ds\n",
+    "[trust-runner] interval=%ds log_every=%ds sabotage_after=%ds checkin_interval=%ds audit_anchor_interval=%ds fs_scan_interval=%ds\n",
     $intervalSec,
     $logEverySec,
     $sabotageAfterSec,
     $checkInIntervalSec,
     $auditAnchorIntervalSec,
+    $fsScanIntervalSec,
 ));
 
 while (true) {
@@ -91,6 +119,67 @@ while (true) {
 
         $outbox = TxOutbox::fromRuntimeConfigBestEffort();
         if ($outbox !== null) {
+            // ===== Filesystem threat scan (recommended for writable dirs) =====
+            if ($fsScanIntervalSec > 0 && ($lastFsScanAt === 0 || ($now - $lastFsScanAt) >= $fsScanIntervalSec)) {
+                $lastFsScanAt = $now;
+                try {
+                    $report = FilesystemThreatScanner::scan($fsScanDirs, [
+                        'max_depth' => 12,
+                        'max_dirs' => 2500,
+                        'max_files' => 5000,
+                        'max_findings' => 50,
+                        'max_file_bytes' => 16384,
+                        'ignore_paths' => ['/etc/blackcat/keys'],
+                        'ignore_dir_names' => ['keys'],
+                    ]);
+
+                    $summary = is_array($report['summary'] ?? null) ? $report['summary'] : null;
+                    $byCode = is_array($summary['by_code'] ?? null) ? $summary['by_code'] : [];
+                    $scanErrors = is_int($summary['errors'] ?? null) ? (int) $summary['errors'] : 0;
+
+                    if ($byCode !== []) {
+                        ksort($byCode, SORT_STRING);
+
+                        $controller = Config::get('trust.web3.contracts.instance_controller');
+                        $controller = is_string($controller) ? trim($controller) : '';
+
+                        if (is_string($controller) && preg_match('/^0x[a-fA-F0-9]{40}$/', $controller)) {
+                            $incidentHash = CanonicalJson::sha256Bytes32([
+                                'schema_version' => 1,
+                                'type' => 'blackcat.filesystem.scan.incident',
+                                'controller' => $controller,
+                                'codes' => $byCode,
+                                'errors' => $scanErrors,
+                            ]);
+
+                            if (!is_string($lastFsIncidentHash) || !hash_equals($lastFsIncidentHash, $incidentHash) || ($now - $lastFsIncidentEnqueuedAt) >= 300) {
+                                $payload = [
+                                    'schema_version' => 1,
+                                    'type' => 'blackcat.tx_request',
+                                    'created_at' => gmdate('c'),
+                                    'to' => $controller,
+                                    'method' => 'reportIncident(bytes32)',
+                                    'args' => [$incidentHash],
+                                    'meta' => [
+                                        'source' => 'trust-runner',
+                                        'kind' => 'filesystem_scan',
+                                        'codes' => $byCode,
+                                        'errors' => $scanErrors,
+                                    ],
+                                ];
+
+                                $written = $outbox->enqueue($payload);
+                                $lastFsIncidentHash = $incidentHash;
+                                $lastFsIncidentEnqueuedAt = $now;
+                                fwrite(STDERR, "[trust-runner] outbox: queued filesystem scan incident tx: {$written}\n");
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    fwrite(STDERR, "[trust-runner] WARN: filesystem scan failed: " . $e->getMessage() . "\n");
+                }
+            }
+
             // ===== Audit-chain anchoring (recommended) =====
             if ($auditAnchorIntervalSec > 0 && ($now - $lastAuditAnchorEnqueuedAt) >= $auditAnchorIntervalSec) {
                 try {

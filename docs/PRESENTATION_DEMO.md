@@ -179,8 +179,9 @@ docker compose \
 
 The protected dashboard includes a `On-chain upgrade info` panel (via `GET /demo/upgrade-info`) that prints:
 - `component_id`
-- the local `integrity_root` + policy hashes (v3 + v4)
+- the local `integrity_root` + policy hashes (v3 + v4 + v5)
 - the runtime-config attestation keys (v1 + v2) and their on-chain values/lock state
+- the `http.allowed_hosts` attestation key/value (policy v5) and its on-chain value/lock state
 - optional extra attestation keys/values (composer.lock / PHP fingerprint / image digest)
 
 Use it as a copy/paste source for Foundry scripts in `blackcat-kernel-contracts`.
@@ -218,6 +219,7 @@ docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --b
 Notes:
 - This creates **tx intents only**. Broadcasting requires an external relayer (EOA/Safe/KernelAuthority).
 - Intent payloads are anonymized (hashes + error codes only; no secret material).
+- The runner also performs a best-effort filesystem threat scan of writable dirs and will queue a `reportIncident` intent on findings.
 
 ### Optional: tx-outbox relayer (EOA)
 

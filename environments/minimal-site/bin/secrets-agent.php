@@ -18,6 +18,8 @@ use BlackCat\Core\Kernel\KernelBootstrap;
 use BlackCat\Core\TrustKernel\TrustKernel;
 use BlackCat\Core\TrustKernel\TrustKernelException;
 use BlackCat\Core\TrustKernel\AuditChain;
+use BlackCat\Core\TrustKernel\CanonicalJson;
+use BlackCat\Core\TrustKernel\TxOutbox;
 use BlackCat\Core\Security\KeyManager;
 use BlackCat\Core\Security\SecretsAgentPolicy;
 use BlackCat\Core\Security\FileVault;
@@ -481,6 +483,67 @@ try {
     exit(2);
 }
 
+$txOutbox = TxOutbox::fromRuntimeConfigBestEffort();
+if ($txOutbox !== null) {
+    out('[secrets-agent] tx_outbox=' . $txOutbox->dir);
+}
+
+// Debounce outbox incidents to avoid spamming relayers.
+$incidentDebounceSec = 30;
+/** @var array<string,int> */
+$lastIncidentAtByHash = [];
+
+$enqueueIncident = static function (string $code, ?string $op = null) use (&$lastIncidentAtByHash, $incidentDebounceSec, $txOutbox, $kernel): void {
+    if ($txOutbox === null || !($kernel instanceof TrustKernel)) {
+        return;
+    }
+
+    $code = strtolower(trim($code));
+    if ($code === '' || str_contains($code, "\0")) {
+        return;
+    }
+
+    $op = is_string($op) ? strtolower(trim($op)) : null;
+    if ($op === '' || $op === null || str_contains((string) $op, "\0")) {
+        $op = null;
+    }
+
+    $controller = $kernel->instanceControllerAddress();
+
+    $incidentHash = CanonicalJson::sha256Bytes32([
+        'schema_version' => 1,
+        'type' => 'blackcat.security.secrets_agent.anomaly',
+        'controller' => $controller,
+        'code' => $code,
+        'op' => $op,
+    ]);
+
+    $now = time();
+    $lastAt = $lastIncidentAtByHash[$incidentHash] ?? 0;
+    if ($incidentDebounceSec > 0 && $lastAt > 0 && ($now - $lastAt) < $incidentDebounceSec) {
+        return;
+    }
+
+    try {
+        $txOutbox->enqueue([
+            'schema_version' => 1,
+            'type' => 'blackcat.tx_request',
+            'created_at' => gmdate('c'),
+            'to' => $controller,
+            'method' => 'reportIncident(bytes32)',
+            'args' => [$incidentHash],
+            'meta' => [
+                'source' => 'secrets-agent',
+                'code' => $code,
+                'op' => $op,
+            ],
+        ]);
+        $lastIncidentAtByHash[$incidentHash] = $now;
+    } catch (\Throwable $e) {
+        out('[secrets-agent] WARN: incident enqueue failed: ' . $e->getMessage());
+    }
+};
+
 if (file_exists($socketPath) || is_link($socketPath)) {
     if (is_link($socketPath)) {
         throw new \RuntimeException('Refusing to use symlink socket path: ' . $socketPath);
@@ -618,12 +681,14 @@ while (true) {
         $uid = $peerInfo['uid'] ?? null;
         if (!is_int($uid)) {
             auditAppend($auditChain, 'secrets_agent.reject.peercred_unavailable', $actor, []);
+            $enqueueIncident('peercred_unavailable');
             fwrite($conn, json_encode(['ok' => false, 'error' => 'peercred_unavailable']) . "\n");
             fclose($conn);
             continue;
         }
         if ($allowedPeerUids !== [] && !in_array($uid, $allowedPeerUids, true)) {
             auditAppend($auditChain, 'secrets_agent.reject.peercred_uid_not_allowed', $actor, []);
+            $enqueueIncident('peercred_uid_not_allowed');
             fwrite($conn, json_encode(['ok' => false, 'error' => 'peercred_uid_not_allowed']) . "\n");
             fclose($conn);
             continue;
@@ -635,6 +700,7 @@ while (true) {
     $line = stream_get_line($conn, $maxLine, "\n");
     if (!is_string($line) || trim($line) === '') {
         auditAppend($auditChain, 'secrets_agent.reject.empty_request', $actor, []);
+        $enqueueIncident('empty_request');
         fwrite($conn, json_encode(['ok' => false, 'error' => 'empty_request']) . "\n");
         fclose($conn);
         continue;
@@ -645,6 +711,7 @@ while (true) {
         $req = json_decode($line, true, 64, JSON_THROW_ON_ERROR);
     } catch (\JsonException) {
         auditAppend($auditChain, 'secrets_agent.reject.bad_json', $actor, []);
+        $enqueueIncident('bad_json');
         fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_json']) . "\n");
         fclose($conn);
         continue;
@@ -652,6 +719,7 @@ while (true) {
 
     if (!is_array($req)) {
         auditAppend($auditChain, 'secrets_agent.reject.bad_request', $actor, []);
+        $enqueueIncident('bad_request');
         fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_request']) . "\n");
         fclose($conn);
         continue;
@@ -669,6 +737,7 @@ while (true) {
         && $op !== 'filevault_decrypt_stream'
     ) {
         auditAppend($auditChain, 'secrets_agent.reject.unsupported_op', $actor, []);
+        $enqueueIncident('unsupported_op', is_string($op) ? $op : null);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'unsupported_op']) . "\n");
         fclose($conn);
         continue;
@@ -680,6 +749,7 @@ while (true) {
 
         if (!$limiterAllow($uid, (string) $op)) {
             auditAppend($auditChain, 'secrets_agent.reject.rate_limited', $actor, ['op' => (string) $op]);
+            $enqueueIncident('rate_limited', is_string($op) ? $op : null);
             fwrite($conn, json_encode(['ok' => false, 'error' => 'rate_limited']) . "\n");
             fclose($conn);
             continue;
@@ -694,6 +764,7 @@ while (true) {
                 auditAppend($auditChain, 'secrets_agent.reject.key_export_disabled', $actor, [
                     'basename' => is_string($req['basename'] ?? null) ? (string) $req['basename'] : null,
                 ]);
+                $enqueueIncident('key_export_disabled', 'get_all_keys');
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'key_export_disabled']) . "\n");
                 fclose($conn);
                 continue;
@@ -714,6 +785,7 @@ while (true) {
 
             $allow = keyBasenameAllowlist();
             if (!array_key_exists($basename, $allow)) {
+                $enqueueIncident('basename_not_allowed', 'get_all_keys');
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
                 fclose($conn);
                 continue;
@@ -789,6 +861,7 @@ while (true) {
 
             $allow = keyBasenameAllowlist();
             if (!array_key_exists($basename, $allow)) {
+                $enqueueIncident('basename_not_allowed', 'filevault_encrypt_stream');
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
                 fclose($conn);
                 continue;
@@ -912,6 +985,7 @@ while (true) {
 
             $allow = keyBasenameAllowlist();
             if (!array_key_exists($basename, $allow)) {
+                $enqueueIncident('basename_not_allowed', 'filevault_decrypt_stream');
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
                 fclose($conn);
                 continue;
@@ -1023,6 +1097,7 @@ while (true) {
 
             $allow = keyBasenameAllowlist();
             if (!array_key_exists($basename, $allow)) {
+                $enqueueIncident('basename_not_allowed', 'crypto_encrypt');
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
                 fclose($conn);
                 continue;
@@ -1121,6 +1196,7 @@ while (true) {
 
             $allow = keyBasenameAllowlist();
             if (!array_key_exists($basename, $allow)) {
+                $enqueueIncident('basename_not_allowed', 'crypto_decrypt');
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
                 fclose($conn);
                 continue;
@@ -1240,6 +1316,7 @@ while (true) {
 
             $allow = keyBasenameAllowlist();
             if (!array_key_exists($basename, $allow)) {
+                $enqueueIncident('basename_not_allowed', $op === 'hmac_latest' ? 'hmac_latest' : 'hmac_candidates');
                 fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
                 fclose($conn);
                 continue;

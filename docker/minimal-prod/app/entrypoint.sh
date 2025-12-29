@@ -74,6 +74,11 @@ php -r '
   $endpoints = array_values(array_filter(array_map("trim", explode(",", $rpcEndpointsRaw)), fn($v) => $v !== ""));
 
   $cfg = [
+    "http" => [
+      // Host allowlist (anti Host-header injection / confusion).
+      // The TrustKernel can optionally bind this value on-chain (policy v5).
+      "allowed_hosts" => ["localhost", "127.0.0.1"],
+    ],
     "trust" => [
       "integrity" => [
         "root_dir" => $rootDir,
@@ -251,12 +256,18 @@ php -r '
       "policy_hash_v4_warn" => $tk->policyHashV4Warn,
       "policy_hash_v4_strict_v2" => $tk->policyHashV4StrictV2,
       "policy_hash_v4_warn_v2" => $tk->policyHashV4WarnV2,
+      "policy_hash_v5_strict" => $tk->policyHashV5Strict,
+      "policy_hash_v5_warn" => $tk->policyHashV5Warn,
+      "policy_hash_v5_strict_v2" => $tk->policyHashV5StrictV2,
+      "policy_hash_v5_warn_v2" => $tk->policyHashV5WarnV2,
     ],
     "attestation" => [
       "runtime_config_key" => $attKey,
       "runtime_config_key_v2" => $tk->runtimeConfigAttestationKeyV2,
       "runtime_config_value" => $attVal,
       "runtime_config_source_path" => $tk->runtimeConfigSourcePath,
+      "http_allowed_hosts_key_v1" => $tk->httpAllowedHostsAttestationKeyV1,
+      "http_allowed_hosts_value_v1" => $tk->httpAllowedHostsCanonicalSha256,
       "composer_lock_key_v1" => $tk->composerLockAttestationKeyV1,
       "composer_lock_value_v1" => $composerLockSha256,
       "composer_lock_source_path" => is_file($composerLockPath) ? $composerLockPath : null,

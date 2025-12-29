@@ -109,6 +109,7 @@ Even with TrustKernel:
 - avoid co-locating secrets and untrusted write surfaces (FTP/SSH) when possible
 - disable/remove FTP immediately after install
 - keep `/etc/blackcat` root-owned and non-writable by the web runtime
+- run periodic filesystem scans on writable dirs (see `environments/minimal-site/bin/trust-runner.php`)
 
 ## Optional: additional on-chain attestations (higher discipline)
 
@@ -120,6 +121,7 @@ You can harden further by committing additional attestations (bytes32) to the In
 - **composer.lock canonical hash** (`blackcat.composer.lock.canonical_sha256.v1`): detects dependency drift/tamper.
 - **PHP fingerprint** (`blackcat.php.fingerprint.canonical_sha256.v2`): detects “silent runtime change” (PHP/ext versions).
 - **image digest** (`blackcat.image.digest.sha256.v1`): detects container image swap (container platforms).
+- **HTTP allowed hosts list** (`blackcat.http.allowed_hosts.canonical_sha256.v1`): binds `http.allowed_hosts` to chain (policy v5).
 
 Tradeoff:
 - Extremely strong provenance, but upgrades require discipline (you must update+lock attestations when changing runtime/deps/images).
