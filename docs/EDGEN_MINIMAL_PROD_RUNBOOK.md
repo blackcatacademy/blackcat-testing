@@ -44,7 +44,13 @@ docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml run --
 Copy these values from the output:
 
 - `integrity.root` (bytes32)
-- `trust_policy.policy_hash_v3_strict` (bytes32)
+- recommended: `trust_policy.policy_hash_v4_strict` (bytes32)
+  - v4 strict additionally requires on-chain commitments for:
+    - `composer.lock` (canonical JSON sha256)
+    - PHP fingerprint (v2; multi-SAPI stable)
+    - `/etc/blackcat/image.digest` (sha256 bytes32)
+  - these attestation keys/values are also printed in the compute output (Step 3).
+- alternative (older): `trust_policy.policy_hash_v3_strict` (bytes32)
 - If `integrity.uri_hash` is `null`, use `0x0000000000000000000000000000000000000000000000000000000000000000`.
 
 ## Step 2: Create a new InstanceController (genesis)
@@ -99,6 +105,15 @@ Copy:
 - `attestation.runtime_config_key_v2` (rotation key)
 - `attestation.runtime_config_value`
 
+If you selected policy v4 strict (recommended), also copy:
+
+- `attestation.composer_lock_key_v1`
+- `attestation.composer_lock_value_v1`
+- `attestation.php_fingerprint_key_v2`
+- `attestation.php_fingerprint_value_v2`
+- `attestation.image_digest_key_v1`
+- `attestation.image_digest_value_v1`
+
 ## Step 4: Set + lock the runtime-config attestation on-chain
 
 In `blackcat-kernel-contracts`:
@@ -125,8 +140,42 @@ docker run --rm \
 At this point the chain is committed to:
 
 - the integrity root (genesis)
-- policy v3 strict (requires runtime-config commitment)
+- your chosen policy hash (v3 or v4)
 - runtime-config commitment (attested + locked)
+
+### Policy v4: set + lock additional attestations (recommended)
+
+If you selected `trust_policy.policy_hash_v4_strict` (or v4 warn), you must also set+lock the additional keys
+*before* you start the runtime (otherwise TrustKernel will fail-closed):
+
+Repeat Step 4 three more times (same script, different key/value):
+
+1) composer.lock
+
+```bash
+export BLACKCAT_ATTESTATION_KEY=0x...   # attestation.composer_lock_key_v1
+export BLACKCAT_ATTESTATION_VALUE=0x... # attestation.composer_lock_value_v1
+```
+
+2) PHP fingerprint (v2)
+
+```bash
+export BLACKCAT_ATTESTATION_KEY=0x...   # attestation.php_fingerprint_key_v2
+export BLACKCAT_ATTESTATION_VALUE=0x... # attestation.php_fingerprint_value_v2
+```
+
+3) image digest
+
+```bash
+export BLACKCAT_ATTESTATION_KEY=0x...   # attestation.image_digest_key_v1
+export BLACKCAT_ATTESTATION_VALUE=0x... # attestation.image_digest_value_v1
+```
+
+Notes:
+- This harness auto-writes `/etc/blackcat/image.digest` (derived from the current build) unless you provide
+  `BLACKCAT_TESTING_IMAGE_DIGEST` (e.g. an OCI digest like `sha256:<hex>`).
+- In a real deployment, treat `image.digest` as an externally verifiable “build artifact” digest (OCI image digest,
+  signed release, etc).
 
 ### Policy v3 rotation (when v1 key is already locked)
 
@@ -138,6 +187,10 @@ to overwrite the locked key:
 - upgrade the InstanceController `activePolicyHash` to `trust_policy.policy_hash_v3_strict_v2`
 
 This avoids creating a new InstanceController (no new contracts), while keeping the system fail-closed.
+
+For policy v4, the same idea applies:
+- set+lock the rotated runtime-config key `attestation.runtime_config_key_v2`
+- upgrade the `activePolicyHash` to `trust_policy.policy_hash_v4_strict_v2`
 
 ## Step 5: Run the long-running harness
 

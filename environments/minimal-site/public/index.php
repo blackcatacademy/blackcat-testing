@@ -334,7 +334,26 @@ HttpKernel::run(
               try {
                 const res = await fetch("/demo/tx-outbox", {cache:"no-store"});
                 const text = await res.text();
-                $("outboxBox").textContent = text.trim() !== "" ? text : "{}";
+                const raw = text.trim() !== "" ? text : "{}";
+                try {
+                  const json = JSON.parse(raw);
+                  if (json && json.ok === true && json.counts) {
+                    const c = json.counts;
+                    const pending = typeof c.pending === "number" ? c.pending : 0;
+                    const processing = typeof c.processing === "number" ? c.processing : 0;
+                    const sent = typeof c.sent === "number" ? c.sent : 0;
+                    const failed = typeof c.failed === "number" ? c.failed : 0;
+                    const summary = {
+                      counts: { pending, processing, sent, failed },
+                      latest: json.latest ?? null
+                    };
+                    $("outboxBox").textContent = JSON.stringify(summary, null, 2);
+                  } else {
+                    $("outboxBox").textContent = raw;
+                  }
+                } catch (e) {
+                  $("outboxBox").textContent = raw;
+                }
               } catch (e) {
                 $("outboxBox").textContent = "[outbox] fetch failed";
               } finally {
@@ -677,53 +696,212 @@ HttpKernel::run(
             return;
         }
 
-        $files = glob(rtrim($dir, '/\\') . '/*.json') ?: [];
-        rsort($files);
-
-        $items = [];
-        foreach ($files as $file) {
-            if (!is_string($file) || trim($file) === '' || str_contains($file, "\0")) {
-                continue;
+        $safeJsonRead = static function (string $path, int $maxBytes = 65536): ?array {
+            if (trim($path) === '' || str_contains($path, "\0")) {
+                return null;
             }
-            if (!is_file($file) || is_link($file) || !is_readable($file)) {
-                continue;
+            if (!is_file($path) || is_link($path) || !is_readable($path)) {
+                return null;
             }
 
-            $base = basename($file);
-            if ($base === '' || str_contains($base, "\0")) {
-                continue;
-            }
-
-            $raw = @file_get_contents($file, false, null, 0, 64 * 1024);
+            $raw = @file_get_contents($path, false, null, 0, $maxBytes);
             if (!is_string($raw) || trim($raw) === '') {
-                continue;
+                return null;
             }
 
             /** @var mixed $decoded */
             $decoded = json_decode($raw, true);
             if (!is_array($decoded)) {
+                return null;
+            }
+
+            return $decoded;
+        };
+
+        $safeTextRead = static function (string $path, int $maxBytes = 2048): ?string {
+            if (trim($path) === '' || str_contains($path, "\0")) {
+                return null;
+            }
+            if (!is_file($path) || is_link($path) || !is_readable($path)) {
+                return null;
+            }
+
+            $raw = @file_get_contents($path, false, null, 0, $maxBytes);
+            if (!is_string($raw) || trim($raw) === '') {
+                return null;
+            }
+
+            return trim($raw);
+        };
+
+        $listTxJsonFiles = static function (string $stateDir): array {
+            if (trim($stateDir) === '' || str_contains($stateDir, "\0")) {
+                return [];
+            }
+            if (!is_dir($stateDir) || is_link($stateDir) || !is_readable($stateDir)) {
+                return [];
+            }
+
+            $files = glob(rtrim($stateDir, '/\\') . '/tx.*.json') ?: [];
+            rsort($files);
+            return array_values(array_filter($files, 'is_string'));
+        };
+
+        $states = [
+            'pending' => $dir,
+            'processing' => rtrim($dir, '/\\') . '/processing',
+            'sent' => rtrim($dir, '/\\') . '/sent',
+            'failed' => rtrim($dir, '/\\') . '/failed',
+        ];
+
+        $explorerBaseUrl = null;
+        try {
+            $cid = Config::get('trust.web3.chain_id');
+            if (is_int($cid)) {
+                if ($cid === 4207) {
+                    $explorerBaseUrl = 'https://edgenscan.io';
+                }
+            } elseif (is_string($cid) && ctype_digit(trim($cid))) {
+                if ((int) trim($cid) === 4207) {
+                    $explorerBaseUrl = 'https://edgenscan.io';
+                }
+            }
+        } catch (\Throwable) {
+            $explorerBaseUrl = null;
+        }
+
+        $counts = [];
+        $latest = [
+            'pending' => [],
+            'sent' => [],
+            'failed' => [],
+        ];
+
+        foreach ($states as $state => $stateDir) {
+            $files = $listTxJsonFiles($stateDir);
+            $counts[$state] = count($files);
+
+            if ($state === 'pending') {
+                foreach ($files as $file) {
+                    $base = basename($file);
+                    if ($base === '' || str_contains($base, "\0")) {
+                        continue;
+                    }
+
+                    $decoded = $safeJsonRead($file);
+                    if ($decoded === null) {
+                        continue;
+                    }
+
+                    $latest['pending'][] = [
+                        'file' => $base,
+                        'type' => $decoded['type'] ?? null,
+                        'created_at' => $decoded['created_at'] ?? null,
+                        'to' => $decoded['to'] ?? null,
+                        'method' => $decoded['method'] ?? null,
+                        'args' => $decoded['args'] ?? null,
+                        'meta' => $decoded['meta'] ?? null,
+                    ];
+
+                    if (count($latest['pending']) >= 10) {
+                        break;
+                    }
+                }
                 continue;
             }
 
-            $items[] = [
-                'file' => $base,
-                'type' => $decoded['type'] ?? null,
-                'created_at' => $decoded['created_at'] ?? null,
-                'to' => $decoded['to'] ?? null,
-                'method' => $decoded['method'] ?? null,
-                'args' => $decoded['args'] ?? null,
-                'meta' => $decoded['meta'] ?? null,
-            ];
+            if ($state === 'sent') {
+                foreach ($files as $file) {
+                    $base = basename($file);
+                    if ($base === '' || str_contains($base, "\0")) {
+                        continue;
+                    }
 
-            if (count($items) >= 20) {
-                break;
+                    $stem = preg_replace('/\\.json$/', '', $base);
+                    if (!is_string($stem) || $stem === '') {
+                        continue;
+                    }
+
+                    $decoded = $safeJsonRead($file);
+                    $receiptPath = rtrim($stateDir, '/\\') . '/' . $stem . '.receipt.json';
+                    $receipt = $safeJsonRead($receiptPath, 128 * 1024);
+
+                    $txHash = null;
+                    $status = null;
+                    if (is_array($receipt)) {
+                        if (isset($receipt['transactionHash']) && is_string($receipt['transactionHash'])) {
+                            $txHash = $receipt['transactionHash'];
+                            $status = $receipt['status'] ?? null;
+                        } elseif (isset($receipt['tx_hash']) && is_string($receipt['tx_hash'])) {
+                            $txHash = $receipt['tx_hash'];
+                            $status = $receipt['receipt'] ?? null;
+                        }
+                    }
+
+                    $explorerUrl = null;
+                    if (is_string($txHash) && preg_match('/^0x[0-9a-fA-F]{64}$/', $txHash) === 1) {
+                        if (is_string($explorerBaseUrl) && trim($explorerBaseUrl) !== '') {
+                            $explorerUrl = rtrim($explorerBaseUrl, '/') . '/tx/' . $txHash;
+                        }
+                    }
+
+                    $latest['sent'][] = [
+                        'file' => $base,
+                        'tx_hash' => $txHash,
+                        'explorer' => $explorerUrl,
+                        'receipt_status' => $status,
+                        'intent' => is_array($decoded) ? [
+                            'created_at' => $decoded['created_at'] ?? null,
+                            'method' => $decoded['method'] ?? null,
+                            'meta' => $decoded['meta'] ?? null,
+                        ] : null,
+                    ];
+
+                    if (count($latest['sent']) >= 10) {
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            if ($state === 'failed') {
+                foreach ($files as $file) {
+                    $base = basename($file);
+                    if ($base === '' || str_contains($base, "\0")) {
+                        continue;
+                    }
+
+                    $stem = preg_replace('/\\.json$/', '', $base);
+                    if (!is_string($stem) || $stem === '') {
+                        continue;
+                    }
+
+                    $decoded = $safeJsonRead($file);
+                    $errorPath = rtrim($stateDir, '/\\') . '/' . $stem . '.error.txt';
+                    $error = $safeTextRead($errorPath, 4096);
+
+                    $latest['failed'][] = [
+                        'file' => $base,
+                        'error' => $error,
+                        'intent' => is_array($decoded) ? [
+                            'created_at' => $decoded['created_at'] ?? null,
+                            'method' => $decoded['method'] ?? null,
+                            'meta' => $decoded['meta'] ?? null,
+                        ] : null,
+                    ];
+
+                    if (count($latest['failed']) >= 10) {
+                        break;
+                    }
+                }
+                continue;
             }
         }
 
         $sendJson(200, [
             'ok' => true,
-            'count' => count($items),
-            'items' => $items,
+            'counts' => $counts,
+            'latest' => $latest,
             'note' => 'These are tx intents only; broadcasting requires an external relayer (EOA/Safe/KernelAuthority).',
         ]);
         return;

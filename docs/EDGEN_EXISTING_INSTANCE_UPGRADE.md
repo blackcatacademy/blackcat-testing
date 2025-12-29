@@ -92,6 +92,12 @@ docker run --rm \
   script script/SetAttestationAndLock.s.sol:SetAttestationAndLock --rpc-url edgen --chain-id 4207 --broadcast -vvvv
 ```
 
+Policy v4 note (if you are upgrading to a v4 policy hash):
+- you must also set+lock the additional v4 attestations (composer.lock / PHP fingerprint / image digest) before
+  activating the upgrade, otherwise the runtime will fail-closed.
+- use the same script (`SetAttestationAndLock`) with the corresponding key/value pairs (see
+  `blackcat-testing/docs/EDGEN_MINIMAL_PROD_RUNBOOK.md` Step 4).
+
 ## 3) Propose upgrade by release
 
 ```bash
@@ -168,4 +174,3 @@ docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
   up --build --abort-on-container-exit attacker
 ```
-

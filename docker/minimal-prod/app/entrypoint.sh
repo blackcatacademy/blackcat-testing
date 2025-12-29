@@ -133,6 +133,69 @@ php -r '
     throw new \RuntimeException("trust.web3 not configured");
   }
 
+  $composerLockPath = rtrim($rootDir, "/\\") . "/composer.lock";
+  $composerLockSha256 = null;
+  if (is_file($composerLockPath) && !is_link($composerLockPath) && is_readable($composerLockPath)) {
+    $raw = @file_get_contents($composerLockPath);
+    if (is_string($raw) && trim($raw) !== "") {
+      /** @var mixed $decoded */
+      $decoded = json_decode($raw, true);
+      if (is_array($decoded)) {
+        /** @var array<string,mixed> $decoded */
+        $composerLockSha256 = \BlackCat\Core\TrustKernel\CanonicalJson::sha256Bytes32($decoded);
+      }
+    }
+  }
+
+  $phpFingerprintSha256V2 = null;
+  try {
+    $payload = \BlackCat\Config\Security\KernelAttestations::phpFingerprintPayloadV2();
+    $phpFingerprintSha256V2 = \BlackCat\Config\Security\KernelAttestations::phpFingerprintAttestationValueV2($payload);
+  } catch (\Throwable) {
+    $phpFingerprintSha256V2 = null;
+  }
+
+  $digestPath = "/etc/blackcat/image.digest";
+  if (is_link($digestPath)) {
+    throw new \RuntimeException("Refusing symlink image digest file: {$digestPath}");
+  }
+
+  $digestRaw = getenv("BLACKCAT_TESTING_IMAGE_DIGEST");
+  if (!is_string($digestRaw) || trim($digestRaw) === "") {
+    $seed = json_encode([
+      "schema_version" => 1,
+      "type" => "blackcat.image.digest.seed",
+      "integrity_root" => $manifest["root"],
+      "composer_lock_sha256" => $composerLockSha256,
+      "php_fingerprint_sha256_v2" => $phpFingerprintSha256V2,
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if (!is_string($seed)) {
+      $seed = (string) $manifest["root"];
+    }
+    $digestRaw = "sha256:" . hash("sha256", $seed);
+  }
+
+  if (!$noReprovision && ($force || !is_file($digestPath))) {
+    $tmp = $digestPath . ".tmp-" . bin2hex(random_bytes(6));
+    file_put_contents($tmp, trim($digestRaw) . "\n");
+    @chmod($tmp, 0640);
+    @chgrp($tmp, "www-data");
+    if (!@rename($tmp, $digestPath)) {
+      @unlink($tmp);
+      throw new \RuntimeException("Unable to move image digest file into place");
+    }
+  }
+
+  @chmod($digestPath, 0640);
+  @chgrp($digestPath, "www-data");
+
+  $imageDigestAttestationValue = null;
+  try {
+    $imageDigestAttestationValue = \BlackCat\Config\Security\KernelAttestations::imageDigestAttestationValueV1($digestRaw);
+  } catch (\Throwable) {
+    $imageDigestAttestationValue = null;
+  }
+
   $attKey = $tk->runtimeConfigAttestationKey;
   $attVal = $tk->runtimeConfigCanonicalSha256;
 
@@ -151,12 +214,24 @@ php -r '
       "policy_hash_v3_warn" => $tk->policyHashV3Warn,
       "policy_hash_v3_strict_v2" => $tk->policyHashV3StrictV2,
       "policy_hash_v3_warn_v2" => $tk->policyHashV3WarnV2,
+      "policy_hash_v4_strict" => $tk->policyHashV4Strict,
+      "policy_hash_v4_warn" => $tk->policyHashV4Warn,
+      "policy_hash_v4_strict_v2" => $tk->policyHashV4StrictV2,
+      "policy_hash_v4_warn_v2" => $tk->policyHashV4WarnV2,
     ],
     "attestation" => [
       "runtime_config_key" => $attKey,
       "runtime_config_key_v2" => $tk->runtimeConfigAttestationKeyV2,
       "runtime_config_value" => $attVal,
       "runtime_config_source_path" => $tk->runtimeConfigSourcePath,
+      "composer_lock_key_v1" => $tk->composerLockAttestationKeyV1,
+      "composer_lock_value_v1" => $composerLockSha256,
+      "composer_lock_source_path" => is_file($composerLockPath) ? $composerLockPath : null,
+      "php_fingerprint_key_v2" => $tk->phpFingerprintAttestationKeyV2,
+      "php_fingerprint_value_v2" => $phpFingerprintSha256V2,
+      "image_digest_key_v1" => $tk->imageDigestAttestationKeyV1,
+      "image_digest_value_v1" => $imageDigestAttestationValue,
+      "image_digest_source_path" => is_file($digestPath) ? $digestPath : null,
     ],
   ];
 

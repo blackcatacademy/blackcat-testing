@@ -30,6 +30,7 @@ WORKDIR /srv/blackcat
 COPY blackcat-testing/docker/minimal-prod/app/blackcat-hardening.ini /usr/local/etc/php/conf.d/99-blackcat-hardening.ini
 
 COPY --from=builder /workspace/blackcat-testing/vendor/ /srv/blackcat/vendor/
+COPY blackcat-testing/composer.json blackcat-testing/composer.lock /srv/blackcat/
 COPY blackcat-testing/environments/minimal-site/ /srv/blackcat/site/
 COPY --from=builder /workspace/blackcat-core/ /srv/blackcat-core/
 COPY --from=builder /workspace/blackcat-config/ /srv/blackcat-config/
