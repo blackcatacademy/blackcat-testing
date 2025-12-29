@@ -20,6 +20,7 @@ use BlackCat\Core\TrustKernel\TrustKernelException;
 use BlackCat\Core\TrustKernel\AuditChain;
 use BlackCat\Core\Security\KeyManager;
 use BlackCat\Core\Security\SecretsAgentPolicy;
+use BlackCat\Core\Security\FileVault;
 
 function out(string $msg): void
 {
@@ -174,6 +175,74 @@ $limiterDefaultRpm = 6000;
 $limiterOpRpm = [];
 /** @var AuditChain|null */
 $auditChain = null;
+$filevaultMaxBytes = 256 * 1024 * 1024; // 256 MiB
+$filevaultTimeoutSec = 120;
+
+/**
+ * @param resource $conn
+ */
+function readExactToFile(mixed $conn, string $destPath, int $bytes, int $chunkSize = 1048576): int
+{
+    $fh = fopen($destPath, 'wb');
+    if ($fh === false) {
+        throw new \RuntimeException('tmp_file_open_failed');
+    }
+    chmod($destPath, 0600);
+
+    $readTotal = 0;
+    try {
+        while ($readTotal < $bytes) {
+            $want = min($chunkSize, $bytes - $readTotal);
+            $buf = fread($conn, $want);
+            if ($buf === false || $buf === '') {
+                break;
+            }
+            $w = fwrite($fh, $buf);
+            if ($w === false || $w !== strlen($buf)) {
+                throw new \RuntimeException('tmp_file_write_failed');
+            }
+            $readTotal += $w;
+        }
+        fflush($fh);
+        return $readTotal;
+    } finally {
+        fclose($fh);
+    }
+}
+
+/**
+ * @param resource $conn
+ */
+function streamFileToConn(mixed $conn, string $srcPath, int $chunkSize = 1048576): int
+{
+    $fh = fopen($srcPath, 'rb');
+    if ($fh === false) {
+        throw new \RuntimeException('tmp_file_open_failed');
+    }
+
+    $sent = 0;
+    try {
+        while (!feof($fh)) {
+            $buf = fread($fh, $chunkSize);
+            if ($buf === false || $buf === '') {
+                break;
+            }
+            $off = 0;
+            $len = strlen($buf);
+            while ($off < $len) {
+                $w = fwrite($conn, substr($buf, $off));
+                if ($w === false || $w === 0) {
+                    throw new \RuntimeException('conn_write_failed');
+                }
+                $off += $w;
+                $sent += $w;
+            }
+        }
+        return $sent;
+    } finally {
+        fclose($fh);
+    }
+}
 
 /**
  * @return array{uid:?int,gid:?int,pid:?int,peer:?string}
@@ -342,6 +411,20 @@ try {
                 $out[strtolower(trim($k))] = $rpm;
             }
             $limiterOpRpm = $out;
+        }
+
+        $fvMaxRaw = $repo->get('crypto.agent.filevault.max_bytes');
+        if (is_int($fvMaxRaw) && $fvMaxRaw > 0) {
+            $filevaultMaxBytes = $fvMaxRaw;
+        } elseif (is_string($fvMaxRaw) && ctype_digit(trim($fvMaxRaw))) {
+            $filevaultMaxBytes = max(1, (int) trim($fvMaxRaw));
+        }
+
+        $fvTimeoutRaw = $repo->get('crypto.agent.filevault.timeout_sec');
+        if (is_int($fvTimeoutRaw) && $fvTimeoutRaw > 0) {
+            $filevaultTimeoutSec = $fvTimeoutRaw;
+        } elseif (is_string($fvTimeoutRaw) && ctype_digit(trim($fvTimeoutRaw))) {
+            $filevaultTimeoutSec = max(5, (int) trim($fvTimeoutRaw));
         }
 
         $auditRaw = safeString($repo->get('trust.audit.dir'));
@@ -582,6 +665,8 @@ while (true) {
         && $op !== 'crypto_decrypt'
         && $op !== 'hmac_latest'
         && $op !== 'hmac_candidates'
+        && $op !== 'filevault_encrypt_stream'
+        && $op !== 'filevault_decrypt_stream'
     ) {
         auditAppend($auditChain, 'secrets_agent.reject.unsupported_op', $actor, []);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'unsupported_op']) . "\n");
@@ -598,6 +683,10 @@ while (true) {
             fwrite($conn, json_encode(['ok' => false, 'error' => 'rate_limited']) . "\n");
             fclose($conn);
             continue;
+        }
+
+        if ($op === 'filevault_encrypt_stream' || $op === 'filevault_decrypt_stream') {
+            stream_set_timeout($conn, $filevaultTimeoutSec);
         }
 
         if ($op === 'get_all_keys') {
@@ -669,6 +758,250 @@ while (true) {
             fwrite($conn, json_encode(['ok' => true, 'keys' => $outKeys], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
             fclose($conn);
             continue;
+        }
+
+        if ($op === 'filevault_encrypt_stream') {
+            $basename = $req['basename'] ?? null;
+            $plainSize = $req['plain_size'] ?? null;
+            $context = $req['context'] ?? null;
+
+            if (is_string($plainSize) && ctype_digit(trim($plainSize))) {
+                $plainSize = (int) trim($plainSize);
+            }
+            if (!is_string($basename) || !is_int($plainSize) || $plainSize < 0) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_request']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            if ($plainSize > $filevaultMaxBytes) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'payload_too_large']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $basename = trim($basename);
+            if ($basename === '' || str_contains($basename, "\0") || !preg_match('/^[a-z0-9_]{1,64}$/', $basename)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_basename']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $allow = keyBasenameAllowlist();
+            if (!array_key_exists($basename, $allow)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            if ($kernel instanceof TrustKernel) {
+                $kernel->assertReadAllowed('secrets-agent:filevault_encrypt_stream');
+            }
+
+            $tmpDir = sys_get_temp_dir();
+            $tmpPlain = tempnam($tmpDir, 'blackcat-fv-plain-');
+            $tmpEnc = tempnam($tmpDir, 'blackcat-fv-enc-');
+            if (!is_string($tmpPlain) || !is_string($tmpEnc)) {
+                throw new \RuntimeException('tempnam_failed');
+            }
+            @unlink($tmpEnc);
+            $tmpEnc .= '.bin';
+
+            try {
+                $read = readExactToFile($conn, $tmpPlain, $plainSize);
+                if ($read !== $plainSize) {
+                    throw new \RuntimeException('payload_truncated');
+                }
+
+                FileVault::setKeysDir($keysDir);
+                $okPath = FileVault::uploadAndEncrypt($tmpPlain, $tmpEnc);
+                if (!is_string($okPath) || $okPath === '' || !is_file($okPath)) {
+                    throw new \RuntimeException('encrypt_failed');
+                }
+
+                $cipherSize = filesize($okPath);
+                if (!is_int($cipherSize) || $cipherSize < 0) {
+                    throw new \RuntimeException('cipher_stat_failed');
+                }
+
+                $metaPath = $okPath . '.meta';
+                $metaRaw = is_file($metaPath) ? file_get_contents($metaPath) : false;
+                $meta = null;
+                if (is_string($metaRaw) && trim($metaRaw) !== '') {
+                    $decoded = json_decode($metaRaw, true);
+                    if (is_array($decoded)) {
+                        $meta = $decoded;
+                    }
+                }
+                if (!is_array($meta)) {
+                    $meta = [
+                        'plain_size' => $plainSize,
+                        'mode' => 'unknown',
+                        'version' => 2,
+                        'key_version' => null,
+                        'context' => is_string($context) ? trim($context) : null,
+                    ];
+                } else {
+                    if (is_string($context) && trim($context) !== '' && !str_contains($context, "\0")) {
+                        $meta['context'] = trim($context);
+                    }
+                }
+
+                $auditKey = 'filevault_encrypt:' . $basename;
+                $peerAuditKey = $peer . '|' . $auditKey;
+                $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
+                out('[secrets-agent] audit ' . $peer . ' op=filevault_encrypt_stream basename=' . $basename . ' total=' . $audit[$peerAuditKey]);
+                auditAppend($auditChain, 'secrets_agent.filevault_encrypt_stream', $actor, [
+                    'basename' => $basename,
+                    'plain_size' => $plainSize,
+                    'cipher_size' => $cipherSize,
+                    'mode' => is_string($meta['mode'] ?? null) ? (string) $meta['mode'] : null,
+                    'key_version' => is_string($meta['key_version'] ?? null) ? (string) $meta['key_version'] : null,
+                ]);
+
+                fwrite(
+                    $conn,
+                    json_encode(
+                        [
+                            'ok' => true,
+                            'cipher_size' => $cipherSize,
+                            'meta' => $meta,
+                        ],
+                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                    ) . "\n"
+                );
+                try {
+                    streamFileToConn($conn, $okPath);
+                } catch (\Throwable) {
+                    // If streaming fails mid-response, do not send JSON (protocol already switched to binary).
+                }
+                fclose($conn);
+                continue;
+            } finally {
+                @unlink($tmpPlain);
+                @unlink($tmpEnc);
+                @unlink($tmpEnc . '.meta');
+            }
+        }
+
+        if ($op === 'filevault_decrypt_stream') {
+            $basename = $req['basename'] ?? null;
+            $cipherSize = $req['cipher_size'] ?? null;
+
+            if (is_string($cipherSize) && ctype_digit(trim($cipherSize))) {
+                $cipherSize = (int) trim($cipherSize);
+            }
+            if (!is_string($basename) || !is_int($cipherSize) || $cipherSize < 0) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_request']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            if ($cipherSize > $filevaultMaxBytes) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'payload_too_large']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $basename = trim($basename);
+            if ($basename === '' || str_contains($basename, "\0") || !preg_match('/^[a-z0-9_]{1,64}$/', $basename)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'bad_basename']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            $allow = keyBasenameAllowlist();
+            if (!array_key_exists($basename, $allow)) {
+                fwrite($conn, json_encode(['ok' => false, 'error' => 'basename_not_allowed']) . "\n");
+                fclose($conn);
+                continue;
+            }
+
+            if ($kernel instanceof TrustKernel) {
+                $kernel->assertReadAllowed('secrets-agent:filevault_decrypt_stream');
+            }
+
+            $tmpDir = sys_get_temp_dir();
+            $tmpEnc = tempnam($tmpDir, 'blackcat-fv-enc-');
+            $tmpPlain = tempnam($tmpDir, 'blackcat-fv-plain-');
+            if (!is_string($tmpEnc) || !is_string($tmpPlain)) {
+                throw new \RuntimeException('tempnam_failed');
+            }
+            @unlink($tmpPlain);
+            $tmpPlain .= '.bin';
+
+            try {
+                $read = readExactToFile($conn, $tmpEnc, $cipherSize);
+                if ($read !== $cipherSize) {
+                    throw new \RuntimeException('payload_truncated');
+                }
+
+                FileVault::setKeysDir($keysDir);
+                $ok = FileVault::decryptToFile($tmpEnc, $tmpPlain);
+                if (!$ok) {
+                    fwrite($conn, json_encode(['ok' => false, 'error' => 'decrypt_failed']) . "\n");
+                    fclose($conn);
+                    continue;
+                }
+
+                $plainSize = filesize($tmpPlain);
+                if (!is_int($plainSize) || $plainSize < 0) {
+                    throw new \RuntimeException('plain_stat_failed');
+                }
+
+                $keyVersion = null;
+                // Best-effort: derive key id/version from encrypted header (v2 contains key_id).
+                $fh = fopen($tmpEnc, 'rb');
+                if (is_resource($fh)) {
+                    $v = fread($fh, 1);
+                    if (is_string($v) && strlen($v) === 1 && ord($v) === 2) {
+                        $b = fread($fh, 1);
+                        if (is_string($b) && strlen($b) === 1) {
+                            $klen = ord($b);
+                            if ($klen > 0 && $klen <= 64) {
+                                $kid = fread($fh, $klen);
+                                if (is_string($kid) && preg_match('/^v[0-9]+$/', $kid)) {
+                                    $keyVersion = $kid;
+                                }
+                            }
+                        }
+                    }
+                    fclose($fh);
+                }
+
+                $auditKey = 'filevault_decrypt:' . $basename;
+                $peerAuditKey = $peer . '|' . $auditKey;
+                $audit[$peerAuditKey] = ($audit[$peerAuditKey] ?? 0) + 1;
+                out('[secrets-agent] audit ' . $peer . ' op=filevault_decrypt_stream basename=' . $basename . ' total=' . $audit[$peerAuditKey]);
+                auditAppend($auditChain, 'secrets_agent.filevault_decrypt_stream', $actor, [
+                    'basename' => $basename,
+                    'cipher_size' => $cipherSize,
+                    'plain_size' => $plainSize,
+                    'key_version' => $keyVersion,
+                ]);
+
+                fwrite(
+                    $conn,
+                    json_encode(
+                        [
+                            'ok' => true,
+                            'plain_size' => $plainSize,
+                            'key_version' => $keyVersion,
+                        ],
+                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                    ) . "\n"
+                );
+                try {
+                    streamFileToConn($conn, $tmpPlain);
+                } catch (\Throwable) {
+                    // If streaming fails mid-response, do not send JSON (protocol already switched to binary).
+                }
+                fclose($conn);
+                continue;
+            } finally {
+                @unlink($tmpEnc);
+                @unlink($tmpPlain);
+            }
         }
 
         if ($op === 'crypto_encrypt') {
