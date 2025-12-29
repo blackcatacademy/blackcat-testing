@@ -1,0 +1,14 @@
+services:
+  report:
+    image: minimal-prod-app
+    entrypoint: ["php", "/srv/blackcat/site/bin/soak-report.php"]
+    environment:
+      BLACKCAT_SOAK_RUN_ID: "${BLACKCAT_SOAK_RUN_ID:-}"
+      BLACKCAT_SOAK_LOG_DIR: "${BLACKCAT_SOAK_LOG_DIR:-/var/log/blackcat-testing}"
+      BLACKCAT_SOAK_REPORT_OUT_DIR: "${BLACKCAT_SOAK_REPORT_OUT_DIR:-/var/report}"
+      BLACKCAT_CONFIG_PATH: "${BLACKCAT_CONFIG_PATH:-/etc/blackcat/config.runtime.json}"
+    volumes:
+      - blackcat_etc:/etc/blackcat:ro
+      - blackcat_var:/var/lib/blackcat:ro
+      - ../../var/harness/minimal-prod/logs:/var/log/blackcat-testing:ro
+      - ../../var/harness/minimal-prod/reports:/var/report

@@ -59,6 +59,8 @@ Presentation script:
 - `docs/PRESENTATION_DEMO.md`
 Hardening notes:
 - `docs/HARDENING_RECOMMENDATIONS.md`
+Threat model:
+- `docs/THREAT_MODEL_MATRIX.md`
 
 ### Optional: tx-outbox relayer (broadcast to chain)
 

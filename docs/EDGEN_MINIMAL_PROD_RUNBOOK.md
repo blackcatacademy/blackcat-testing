@@ -238,6 +238,27 @@ Recommended extra assertion (fails fast if provisioning is wrong):
 export EXPECT_TRUST_OK_AT_START=1
 ```
 
+### Generate a soak report
+
+After the run finishes, generate a Markdown report (from attacker logs + tx-outbox):
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.report.yml \
+  run --rm report
+```
+
+To generate a report for a specific run id:
+
+```bash
+BLACKCAT_SOAK_RUN_ID=20251227T203131Z.b6a1cb703f5c \
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.report.yml \
+  run --rm report
+```
+
 ## Cleanup
 
 ```bash

@@ -207,6 +207,15 @@ docker compose \
   up --build --abort-on-container-exit attacker
 ```
 
+After it finishes, generate a Markdown report:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.report.yml \
+  run --rm report
+```
+
 ## K) Secrets-agent (default)
 
 By default, the stack runs a privileged secrets agent that serves crypto keys over a UNIX socket, while key files remain

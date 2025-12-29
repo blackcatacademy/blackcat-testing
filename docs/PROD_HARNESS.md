@@ -37,6 +37,18 @@ The `attacker` container writes:
 - JSONL events: `blackcat-testing/var/harness/minimal-prod/logs/events.<run_id>.jsonl`
 - JSON summary: `blackcat-testing/var/harness/minimal-prod/logs/summary.<run_id>.json`
 
+After a long-running run (e.g. **soak**), generate an investor/audit-friendly Markdown report:
+
+```bash
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.report.yml \
+  run --rm report
+```
+
+Output (host path):
+- `blackcat-testing/var/harness/minimal-prod/reports/SOAK_REPORT_<run_id>.md`
+
 ## Security note
 
 This harness never commits private keys to git. Broadcast keys must be provided at runtime via env/secret managers.
