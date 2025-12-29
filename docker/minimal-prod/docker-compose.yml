@@ -56,6 +56,16 @@ services:
     environment:
       BLACKCAT_TRUST_RUNNER_INTERVAL_SEC: "${BLACKCAT_TRUST_RUNNER_INTERVAL_SEC:-5}"
       BLACKCAT_TRUST_RUNNER_LOG_EVERY_SEC: "${BLACKCAT_TRUST_RUNNER_LOG_EVERY_SEC:-30}"
+      # Optional: on-chain tx intents (broadcast requires relayer).
+      BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC: "${BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC:-0}"
+      BLACKCAT_TRUST_RUNNER_AUDIT_ANCHOR_INTERVAL_SEC: "${BLACKCAT_TRUST_RUNNER_AUDIT_ANCHOR_INTERVAL_SEC:-0}"
+      # Optional: best-effort FS scan (recommended for writable dirs).
+      BLACKCAT_TRUST_RUNNER_FS_SCAN_INTERVAL_SEC: "${BLACKCAT_TRUST_RUNNER_FS_SCAN_INTERVAL_SEC:-60}"
+      BLACKCAT_TRUST_RUNNER_FS_SCAN_DIRS: "${BLACKCAT_TRUST_RUNNER_FS_SCAN_DIRS:-/var/lib/blackcat,/etc/blackcat}"
+      # Optional: queue on-chain incident intents (enabled by default).
+      BLACKCAT_TRUST_RUNNER_EMIT_INCIDENTS: "${BLACKCAT_TRUST_RUNNER_EMIT_INCIDENTS:-1}"
+      # Testing-only: exit runner to simulate crash (enables stale check-in auto-pause demos).
+      BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC: "${BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC:-0}"
       BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC: "${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
     volumes:
       - blackcat_etc:/etc/blackcat

@@ -209,6 +209,10 @@ BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC=60 \
 docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build
 ```
 
+Important:
+- `checkIn(bytes32,bytes32,bytes32)` is restricted to `InstanceController.reporterAuthority`.
+- To broadcast check-ins, your relayer EOA must be configured as the reporter authority (or use `checkInAuthorized(...)`).
+
 If you also want periodic audit-chain anchors (recommended), set:
 
 ```bash
@@ -271,6 +275,41 @@ docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.watcher.yml \
   up --build
 ```
+
+### Optional: auto-pause demo (stale check-ins)
+
+Goal: show that when check-ins stop, the watcher can auto-queue `pauseIfStale()` and the relayer can broadcast it,
+pausing the InstanceController on-chain.
+
+Prereqs (once per InstanceController; in `blackcat-kernel-contracts`):
+- Set `reporterAuthority` to the relayer EOA (so `checkIn(...)` can be broadcast).
+- Set `maxCheckInAgeSec` (and optionally lock it).
+
+Runbooks/scripts:
+- `script/StartReporterAuthorityTransfer.s.sol` + `script/AcceptReporterAuthority.s.sol`
+- `script/SetMaxCheckInAgeSec.s.sol` + `script/LockMaxCheckInAgeSec.s.sol`
+
+Then run the demo with fast check-ins + a simulated runner crash:
+
+```bash
+RELAYER_PRIVATE_KEY=0x... \
+BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC=10 \
+BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC=60 \
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.watcher.yml \
+  up --build
+```
+
+What to show:
+- `GET /demo/upgrade-info` → `on_chain.controller_state.last_checkin_at` keeps updating.
+- After the runner exits, wait `> maxCheckInAgeSec` and observe:
+  - watcher queues `pauseIfStale()` into tx-outbox
+  - relayer broadcasts it
+  - InstanceController becomes paused on-chain
+  - the protected runtime fails closed.
 
 ## 4) Cleanup
 

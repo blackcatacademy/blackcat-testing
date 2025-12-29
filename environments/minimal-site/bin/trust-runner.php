@@ -33,6 +33,15 @@ if ($sabotageAfterSec < 0) {
     $sabotageAfterSec = 0;
 }
 
+$exitAfterRaw = getenv('BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC');
+$exitAfterSec = is_string($exitAfterRaw) && ctype_digit($exitAfterRaw) ? (int) $exitAfterRaw : 0;
+if ($exitAfterSec < 0) {
+    $exitAfterSec = 0;
+}
+if ($exitAfterSec > 86400) {
+    $exitAfterSec = 86400;
+}
+
 $startedAt = time();
 $lastLogAt = 0;
 $sabotaged = false;
@@ -91,10 +100,11 @@ $lastFsIncidentHash = null;
 $lastFsIncidentEnqueuedAt = 0;
 
 fwrite(STDERR, sprintf(
-    "[trust-runner] interval=%ds log_every=%ds sabotage_after=%ds checkin_interval=%ds audit_anchor_interval=%ds fs_scan_interval=%ds\n",
+    "[trust-runner] interval=%ds log_every=%ds sabotage_after=%ds exit_after=%ds checkin_interval=%ds audit_anchor_interval=%ds fs_scan_interval=%ds\n",
     $intervalSec,
     $logEverySec,
     $sabotageAfterSec,
+    $exitAfterSec,
     $checkInIntervalSec,
     $auditAnchorIntervalSec,
     $fsScanIntervalSec,
@@ -102,6 +112,11 @@ fwrite(STDERR, sprintf(
 
 while (true) {
     $now = time();
+
+    if ($exitAfterSec > 0 && ($now - $startedAt) >= $exitAfterSec) {
+        fwrite(STDERR, "[trust-runner] exiting after {$exitAfterSec}s (test-only)\n");
+        exit(0);
+    }
 
     if (!$sabotaged && $sabotageAfterSec > 0 && ($now - $startedAt) >= $sabotageAfterSec) {
         $sabotaged = true;

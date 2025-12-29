@@ -228,6 +228,37 @@ Important:
 - Policy v3 commits to the runtime config JSON. Switching secrets-agent on/off changes the committed hash, so use an
   InstanceController whose runtime-config attestation matches the chosen config.
 
+## L) Auto-pause on stale check-ins (watcher + relayer) (override-ish)
+
+This demonstrates the on-chain safety flow:
+
+- the runner queues `checkIn(...)` intents periodically (tx-outbox)
+- the relayer broadcasts those check-ins (must be `reporterAuthority`)
+- if check-ins stop, the watcher queues `pauseIfStale()` (permissionless)
+- the relayer broadcasts the pause and the InstanceController becomes paused on-chain
+
+Prereqs (once per InstanceController):
+- `reporterAuthority` must be the relayer EOA (so `checkIn(...)` does not revert)
+- `maxCheckInAgeSec` must be set (and optionally locked)
+
+Run:
+
+```bash
+RELAYER_PRIVATE_KEY=0x... \
+BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC=10 \
+BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC=60 \
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.watcher.yml \
+  up --build
+```
+
+Expected outcome:
+- after `BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC`: `checkIn` intents stop
+- after `maxCheckInAgeSec`: watcher queues `pauseIfStale()` and relayer broadcasts it
+- the controller pauses on-chain and the protected runtime fails closed
+
 ## Notes
 
 - These scenarios require a correctly provisioned on-chain `InstanceController` (see `docs/EDGEN_MINIMAL_PROD_RUNBOOK.md`).

@@ -945,6 +945,15 @@ HttpKernel::run(
 
             $controller = $tk->instanceController;
             $componentId = $ic->expectedComponentId($controller);
+            $snapshot = $ic->snapshot($controller);
+            $reporterAuthority = $ic->reporterAuthority($controller);
+            $maxCheckInAgeSec = $ic->maxCheckInAgeSec($controller);
+            $lastCheckInAt = $ic->lastCheckInAt($controller);
+            $lastCheckInOk = $ic->lastCheckInOk($controller);
+
+            $nowLocal = time();
+            $checkInBase = $lastCheckInAt > 0 ? $lastCheckInAt : $snapshot->genesisAt;
+            $checkInCutoff = $maxCheckInAgeSec > 0 ? ($checkInBase + $maxCheckInAgeSec) : null;
 
             $attV1Key = $tk->runtimeConfigAttestationKey;
             $attV2Key = $tk->runtimeConfigAttestationKeyV2;
@@ -1056,6 +1065,16 @@ HttpKernel::run(
                     'image_digest_attestation_key' => $imageDigestKey,
                 ],
                 'on_chain' => [
+                    'controller_state' => [
+                        'snapshot' => $snapshot,
+                        'reporter_authority' => $reporterAuthority,
+                        'max_checkin_age_sec' => $maxCheckInAgeSec,
+                        'last_checkin_at' => $lastCheckInAt,
+                        'last_checkin_ok' => $lastCheckInOk,
+                        'stale_cutoff_at' => $checkInCutoff,
+                        'stale_expected_now' => is_int($checkInCutoff) ? ($nowLocal > $checkInCutoff) : null,
+                        'now_local' => $nowLocal,
+                    ],
                     'attestation_v1' => $attV1,
                     'attestation_v2' => $attV2,
                     'attestation_http_allowed_hosts_v1' => [
@@ -1073,6 +1092,7 @@ HttpKernel::run(
                     'Use policy_hash_v3_strict_v2 if the v1 attestation key is already locked and the runtime config changed.',
                     'Policy v5 additionally binds http.allowed_hosts via an on-chain attestation (defense-in-depth against host allowlist tamper).',
                     'Optional additional attestations (composer.lock / PHP fingerprint / image digest) provide deeper tamper resistance, but increase upgrade discipline (you must update+lock them on upgrades).',
+                    'For on-chain check-ins, set reporterAuthority to the relayer EOA (checkIn is restricted); maxCheckInAgeSec enables permissionless pauseIfStale() safety (watcher/monitoring).',
                 ],
             ];
 

@@ -80,6 +80,7 @@ This repo also ships an optional **watcher** that can queue permissionless safet
 - `pauseIfActiveRootUntrusted()` (pauses when the active root is no longer trusted by `ReleaseRegistry`)
 
 The watcher only **queues tx intents** to the tx-outbox; broadcasting still requires the relayer.
+Note: broadcasting `checkIn(...)` requires the relayer EOA to be configured as `InstanceController.reporterAuthority`.
 
 ```bash
 RELAYER_PRIVATE_KEY=0x... \

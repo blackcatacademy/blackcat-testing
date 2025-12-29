@@ -44,12 +44,15 @@ docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml run --
 Copy these values from the output:
 
 - `integrity.root` (bytes32)
-- recommended: `trust_policy.policy_hash_v4_strict` (bytes32)
-  - v4 strict additionally requires on-chain commitments for:
+- recommended: `trust_policy.policy_hash_v5_strict` (bytes32)
+  - v5 strict requires on-chain commitments for:
+    - runtime config (policy v3-style attestation)
+    - `http.allowed_hosts` (host allowlist commitment; defense-in-depth vs Host-header / allowlist tamper)
     - `composer.lock` (canonical JSON sha256)
     - PHP fingerprint (v2; multi-SAPI stable)
     - `/etc/blackcat/image.digest` (sha256 bytes32)
-  - these attestation keys/values are also printed in the compute output (Step 3).
+  - these attestation keys/values are printed in the compute output (Step 3).
+- alternative: `trust_policy.policy_hash_v4_strict` (bytes32) (no `http.allowed_hosts` binding)
 - alternative (older): `trust_policy.policy_hash_v3_strict` (bytes32)
 - If `integrity.uri_hash` is `null`, use `0x0000000000000000000000000000000000000000000000000000000000000000`.
 
@@ -105,7 +108,12 @@ Copy:
 - `attestation.runtime_config_key_v2` (rotation key)
 - `attestation.runtime_config_value`
 
-If you selected policy v4 strict (recommended), also copy:
+If you selected policy v5 strict (recommended), also copy:
+
+- `attestation.http_allowed_hosts_key_v1`
+- `attestation.http_allowed_hosts_value_v1`
+
+And also copy (v4/v5 strict):
 
 - `attestation.composer_lock_key_v1`
 - `attestation.composer_lock_value_v1`
@@ -140,31 +148,38 @@ docker run --rm \
 At this point the chain is committed to:
 
 - the integrity root (genesis)
-- your chosen policy hash (v3 or v4)
+- your chosen policy hash (v3/v4/v5)
 - runtime-config commitment (attested + locked)
 
-### Policy v4: set + lock additional attestations (recommended)
+### Policy v5: set + lock additional attestations (required for v5 strict)
 
-If you selected `trust_policy.policy_hash_v4_strict` (or v4 warn), you must also set+lock the additional keys
+If you selected `trust_policy.policy_hash_v5_strict` (or v5 warn), you must also set+lock the additional keys
 *before* you start the runtime (otherwise TrustKernel will fail-closed):
 
-Repeat Step 4 three more times (same script, different key/value):
+Repeat Step 4 four more times (same script, different key/value):
 
-1) composer.lock
+1) http.allowed_hosts
+
+```bash
+export BLACKCAT_ATTESTATION_KEY=0x...   # attestation.http_allowed_hosts_key_v1
+export BLACKCAT_ATTESTATION_VALUE=0x... # attestation.http_allowed_hosts_value_v1
+```
+
+2) composer.lock
 
 ```bash
 export BLACKCAT_ATTESTATION_KEY=0x...   # attestation.composer_lock_key_v1
 export BLACKCAT_ATTESTATION_VALUE=0x... # attestation.composer_lock_value_v1
 ```
 
-2) PHP fingerprint (v2)
+3) PHP fingerprint (v2)
 
 ```bash
 export BLACKCAT_ATTESTATION_KEY=0x...   # attestation.php_fingerprint_key_v2
 export BLACKCAT_ATTESTATION_VALUE=0x... # attestation.php_fingerprint_value_v2
 ```
 
-3) image digest
+4) image digest
 
 ```bash
 export BLACKCAT_ATTESTATION_KEY=0x...   # attestation.image_digest_key_v1
@@ -188,9 +203,9 @@ to overwrite the locked key:
 
 This avoids creating a new InstanceController (no new contracts), while keeping the system fail-closed.
 
-For policy v4, the same idea applies:
+For policy v4/v5, the same idea applies:
 - set+lock the rotated runtime-config key `attestation.runtime_config_key_v2`
-- upgrade the `activePolicyHash` to `trust_policy.policy_hash_v4_strict_v2`
+- upgrade the `activePolicyHash` to `trust_policy.policy_hash_v4_strict_v2` (or `trust_policy.policy_hash_v5_strict_v2`)
 
 ## Step 5: Run the long-running harness
 
