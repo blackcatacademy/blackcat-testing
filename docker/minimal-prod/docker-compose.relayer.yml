@@ -9,7 +9,7 @@ services:
       RELAYER_POLL_INTERVAL_SEC: "${RELAYER_POLL_INTERVAL_SEC:-2}"
       RELAYER_MAX_TX_PER_TICK: "${RELAYER_MAX_TX_PER_TICK:-3}"
       RELAYER_DRY_RUN: "${RELAYER_DRY_RUN:-0}"
-      RELAYER_ALLOWED_METHODS: "${RELAYER_ALLOWED_METHODS:-reportIncident(bytes32),checkIn(bytes32,bytes32,bytes32)}"
+      RELAYER_ALLOWED_METHODS: "${RELAYER_ALLOWED_METHODS:-reportIncidentAuthorized(bytes32,uint256,bytes),checkInAuthorized(bytes32,bytes32,bytes32,uint256,bytes),pauseIfStale(),pauseIfActiveRootUntrusted()}"
       RELAYER_ALLOW_HTTP_LOCALHOST: "${RELAYER_ALLOW_HTTP_LOCALHOST:-0}"
     read_only: true
     security_opt:
@@ -26,4 +26,3 @@ services:
     depends_on:
       app:
         condition: service_started
-

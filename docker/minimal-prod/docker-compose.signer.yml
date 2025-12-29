@@ -1,0 +1,29 @@
+services:
+  signer:
+    build:
+      context: ../../..
+      dockerfile: blackcat-testing/docker/minimal-prod/signer/Dockerfile
+    environment:
+      SIGNER_PRIVATE_KEY: "${SIGNER_PRIVATE_KEY:-}"
+      SIGNER_PRIVATE_KEY_FILE: "${SIGNER_PRIVATE_KEY_FILE:-}"
+      SIGNER_POLL_INTERVAL_SEC: "${SIGNER_POLL_INTERVAL_SEC:-2}"
+      SIGNER_MAX_PER_TICK: "${SIGNER_MAX_PER_TICK:-5}"
+      SIGNER_DEFAULT_TTL_SEC: "${SIGNER_DEFAULT_TTL_SEC:-300}"
+      SIGNER_DRY_RUN: "${SIGNER_DRY_RUN:-0}"
+      SIGNER_ALLOW_HTTP_LOCALHOST: "${SIGNER_ALLOW_HTTP_LOCALHOST:-0}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    user: "33:33" # www-data
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    volumes:
+      - blackcat_etc:/etc/blackcat:ro
+      - blackcat_var:/var/lib/blackcat
+    depends_on:
+      app:
+        condition: service_started
+

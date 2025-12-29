@@ -493,7 +493,19 @@ $incidentDebounceSec = 30;
 /** @var array<string,int> */
 $lastIncidentAtByHash = [];
 
-$enqueueIncident = static function (string $code, ?string $op = null) use (&$lastIncidentAtByHash, $incidentDebounceSec, $txOutbox, $kernel): void {
+$incidentTxModeRaw = getenv('BLACKCAT_SECRETS_AGENT_TX_MODE');
+$incidentTxMode = is_string($incidentTxModeRaw) ? strtolower(trim($incidentTxModeRaw)) : 'authorized';
+if (!in_array($incidentTxMode, ['authorized', 'direct'], true)) {
+    $incidentTxMode = 'authorized';
+}
+
+$enqueueIncident = static function (string $code, ?string $op = null) use (
+    &$lastIncidentAtByHash,
+    $incidentDebounceSec,
+    $txOutbox,
+    $kernel,
+    $incidentTxMode,
+): void {
     if ($txOutbox === null || !($kernel instanceof TrustKernel)) {
         return;
     }
@@ -525,19 +537,36 @@ $enqueueIncident = static function (string $code, ?string $op = null) use (&$las
     }
 
     try {
-        $txOutbox->enqueue([
-            'schema_version' => 1,
-            'type' => 'blackcat.tx_request',
-            'created_at' => gmdate('c'),
-            'to' => $controller,
-            'method' => 'reportIncident(bytes32)',
-            'args' => [$incidentHash],
-            'meta' => [
-                'source' => 'secrets-agent',
-                'code' => $code,
-                'op' => $op,
-            ],
-        ]);
+        if ($incidentTxMode === 'direct') {
+            $txOutbox->enqueue([
+                'schema_version' => 1,
+                'type' => 'blackcat.tx_request',
+                'created_at' => gmdate('c'),
+                'to' => $controller,
+                'method' => 'reportIncident(bytes32)',
+                'args' => [$incidentHash],
+                'meta' => [
+                    'source' => 'secrets-agent',
+                    'code' => $code,
+                    'op' => $op,
+                ],
+            ]);
+        } else {
+            $txOutbox->enqueueWithPrefix('sig', [
+                'schema_version' => 1,
+                'type' => 'blackcat.sig_request',
+                'created_at' => gmdate('c'),
+                'to' => $controller,
+                'kind' => 'report_incident',
+                'incident_hash' => $incidentHash,
+                'ttl_sec' => 300,
+                'meta' => [
+                    'source' => 'secrets-agent',
+                    'code' => $code,
+                    'op' => $op,
+                ],
+            ]);
+        }
         $lastIncidentAtByHash[$incidentHash] = $now;
     } catch (\Throwable $e) {
         out('[secrets-agent] WARN: incident enqueue failed: ' . $e->getMessage());

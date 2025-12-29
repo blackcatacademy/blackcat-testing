@@ -90,6 +90,21 @@ if ($fsScanDirs === []) {
     $fsScanIntervalSec = 0;
 }
 
+$sigTtlRaw = getenv('BLACKCAT_TRUST_RUNNER_SIG_TTL_SEC');
+$sigTtlSec = is_string($sigTtlRaw) && ctype_digit($sigTtlRaw) ? (int) $sigTtlRaw : 300;
+if ($sigTtlSec < 30) {
+    $sigTtlSec = 30;
+}
+if ($sigTtlSec > 3600) {
+    $sigTtlSec = 3600;
+}
+
+$txModeRaw = getenv('BLACKCAT_TRUST_RUNNER_TX_MODE');
+$txMode = is_string($txModeRaw) ? strtolower(trim($txModeRaw)) : 'authorized';
+if (!in_array($txMode, ['authorized', 'direct'], true)) {
+    $txMode = 'authorized';
+}
+
 $lastCheckInEnqueuedAt = 0;
 $lastIncidentHash = null;
 $lastIncidentEnqueuedAt = 0;
@@ -109,6 +124,7 @@ fwrite(STDERR, sprintf(
     $auditAnchorIntervalSec,
     $fsScanIntervalSec,
 ));
+fwrite(STDERR, "[trust-runner] tx_mode={$txMode} sig_ttl_sec={$sigTtlSec}\n");
 
 while (true) {
     $now = time();
@@ -170,11 +186,8 @@ while (true) {
                             if (!is_string($lastFsIncidentHash) || !hash_equals($lastFsIncidentHash, $incidentHash) || ($now - $lastFsIncidentEnqueuedAt) >= 300) {
                                 $payload = [
                                     'schema_version' => 1,
-                                    'type' => 'blackcat.tx_request',
                                     'created_at' => gmdate('c'),
                                     'to' => $controller,
-                                    'method' => 'reportIncident(bytes32)',
-                                    'args' => [$incidentHash],
                                     'meta' => [
                                         'source' => 'trust-runner',
                                         'kind' => 'filesystem_scan',
@@ -183,10 +196,24 @@ while (true) {
                                     ],
                                 ];
 
-                                $written = $outbox->enqueue($payload);
+                                if ($txMode === 'direct') {
+                                    $payload['type'] = 'blackcat.tx_request';
+                                    $payload['method'] = 'reportIncident(bytes32)';
+                                    $payload['args'] = [$incidentHash];
+
+                                    $written = $outbox->enqueue($payload);
+                                    fwrite(STDERR, "[trust-runner] outbox: queued filesystem scan incident tx: {$written}\n");
+                                } else {
+                                    $payload['type'] = 'blackcat.sig_request';
+                                    $payload['kind'] = 'report_incident';
+                                    $payload['incident_hash'] = $incidentHash;
+                                    $payload['ttl_sec'] = $sigTtlSec;
+
+                                    $written = $outbox->enqueueWithPrefix('sig', $payload);
+                                    fwrite(STDERR, "[trust-runner] outbox: queued filesystem scan incident signature request: {$written}\n");
+                                }
                                 $lastFsIncidentHash = $incidentHash;
                                 $lastFsIncidentEnqueuedAt = $now;
-                                fwrite(STDERR, "[trust-runner] outbox: queued filesystem scan incident tx: {$written}\n");
                             }
                         }
                     }
@@ -221,11 +248,8 @@ while (true) {
                                 $anchorHash = CanonicalJson::sha256Bytes32($preimage);
                                 $payload = [
                                     'schema_version' => 1,
-                                    'type' => 'blackcat.tx_request',
                                     'created_at' => gmdate('c'),
                                     'to' => $controller,
-                                    'method' => 'reportIncident(bytes32)',
-                                    'args' => [$anchorHash],
                                     'meta' => [
                                         'source' => 'trust-runner',
                                         'kind' => 'audit_anchor',
@@ -237,10 +261,24 @@ while (true) {
                                     ],
                                 ];
 
-                                $written = $outbox->enqueue($payload);
+                                if ($txMode === 'direct') {
+                                    $payload['type'] = 'blackcat.tx_request';
+                                    $payload['method'] = 'reportIncident(bytes32)';
+                                    $payload['args'] = [$anchorHash];
+
+                                    $written = $outbox->enqueue($payload);
+                                    fwrite(STDERR, "[trust-runner] outbox: queued audit anchor tx: {$written}\n");
+                                } else {
+                                    $payload['type'] = 'blackcat.sig_request';
+                                    $payload['kind'] = 'report_incident';
+                                    $payload['incident_hash'] = $anchorHash;
+                                    $payload['ttl_sec'] = $sigTtlSec;
+
+                                    $written = $outbox->enqueueWithPrefix('sig', $payload);
+                                    fwrite(STDERR, "[trust-runner] outbox: queued audit anchor signature request: {$written}\n");
+                                }
                                 $lastAuditAnchorEnqueuedAt = $now;
                                 $lastAuditHeadHash = $headHash;
-                                fwrite(STDERR, "[trust-runner] outbox: queued audit anchor tx: {$written}\n");
                             }
                         }
                     }
@@ -297,15 +335,8 @@ while (true) {
                     try {
                         $payload = [
                             'schema_version' => 1,
-                            'type' => 'blackcat.tx_request',
                             'created_at' => gmdate('c'),
                             'to' => $controller,
-                            'method' => 'checkIn(bytes32,bytes32,bytes32)',
-                            'args' => [
-                                Bytes32::normalizeHex($observedRoot),
-                                Bytes32::normalizeHex($observedUriHash),
-                                Bytes32::normalizeHex($observedPolicy),
-                            ],
                             'meta' => [
                                 'source' => 'trust-runner',
                                 'trusted_now' => $status->trustedNow,
@@ -313,9 +344,30 @@ while (true) {
                                 'write_allowed' => $status->writeAllowed,
                             ],
                         ];
-                        $written = $outbox->enqueue($payload);
+
+                        $rootNorm = Bytes32::normalizeHex($observedRoot);
+                        $uriNorm = Bytes32::normalizeHex($observedUriHash);
+                        $policyNorm = Bytes32::normalizeHex($observedPolicy);
+
+                        if ($txMode === 'direct') {
+                            $payload['type'] = 'blackcat.tx_request';
+                            $payload['method'] = 'checkIn(bytes32,bytes32,bytes32)';
+                            $payload['args'] = [$rootNorm, $uriNorm, $policyNorm];
+
+                            $written = $outbox->enqueue($payload);
+                            fwrite(STDERR, "[trust-runner] outbox: queued checkIn tx: {$written}\n");
+                        } else {
+                            $payload['type'] = 'blackcat.sig_request';
+                            $payload['kind'] = 'check_in';
+                            $payload['observed_root'] = $rootNorm;
+                            $payload['observed_uri_hash'] = $uriNorm;
+                            $payload['observed_policy_hash'] = $policyNorm;
+                            $payload['ttl_sec'] = $sigTtlSec;
+
+                            $written = $outbox->enqueueWithPrefix('sig', $payload);
+                            fwrite(STDERR, "[trust-runner] outbox: queued checkIn signature request: {$written}\n");
+                        }
                         $lastCheckInEnqueuedAt = $now;
-                        fwrite(STDERR, "[trust-runner] outbox: queued checkIn tx: {$written}\n");
                     } catch (\Throwable $e) {
                         fwrite(STDERR, "[trust-runner] WARN: outbox checkIn enqueue failed: " . $e->getMessage() . "\n");
                     }
@@ -346,21 +398,32 @@ while (true) {
                             if (!is_string($lastIncidentHash) || !hash_equals($lastIncidentHash, $incidentHash)) {
                                 $payload = [
                                     'schema_version' => 1,
-                                    'type' => 'blackcat.tx_request',
                                     'created_at' => gmdate('c'),
                                     'to' => $controller,
-                                    'method' => 'reportIncident(bytes32)',
-                                    'args' => [$incidentHash],
                                     'meta' => [
                                         'source' => 'trust-runner',
                                         'error_codes' => $status->errorCodes,
                                     ],
                                 ];
 
-                                $written = $outbox->enqueue($payload);
+                                if ($txMode === 'direct') {
+                                    $payload['type'] = 'blackcat.tx_request';
+                                    $payload['method'] = 'reportIncident(bytes32)';
+                                    $payload['args'] = [$incidentHash];
+
+                                    $written = $outbox->enqueue($payload);
+                                    fwrite(STDERR, "[trust-runner] outbox: queued reportIncident tx: {$written}\n");
+                                } else {
+                                    $payload['type'] = 'blackcat.sig_request';
+                                    $payload['kind'] = 'report_incident';
+                                    $payload['incident_hash'] = $incidentHash;
+                                    $payload['ttl_sec'] = $sigTtlSec;
+
+                                    $written = $outbox->enqueueWithPrefix('sig', $payload);
+                                    fwrite(STDERR, "[trust-runner] outbox: queued reportIncident signature request: {$written}\n");
+                                }
                                 $lastIncidentHash = $incidentHash;
                                 $lastIncidentEnqueuedAt = $now;
-                                fwrite(STDERR, "[trust-runner] outbox: queued reportIncident tx: {$written}\n");
                             }
                         }
                     } catch (\Throwable $e) {

@@ -30,6 +30,28 @@ is_bytes32() {
   esac
 }
 
+is_hex_bytes() {
+  case "$1" in
+    0x[0-9a-fA-F]*)
+      printf '%s' "$1" | tr -d '0-9a-fA-Fx' | grep -q . && return 1
+      n="$(( ${#1} - 2 ))"
+      [ "$n" -ge 0 ] || return 1
+      [ $((n % 2)) -eq 0 ] || return 1
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+is_uint() {
+  v="$(trim "$1")"
+  [ "$v" != "" ] || return 1
+  case "$v" in
+    *[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 trim() {
   # shellcheck disable=SC2001
   printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
@@ -153,7 +175,7 @@ case "$DRY_RUN" in
   *) fail "invalid RELAYER_DRY_RUN (expected 0|1)" ;;
 esac
 
-ALLOWED_METHODS_RAW="${RELAYER_ALLOWED_METHODS:-reportIncident(bytes32),checkIn(bytes32,bytes32,bytes32),pauseIfStale(),pauseIfActiveRootUntrusted()}"
+ALLOWED_METHODS_RAW="${RELAYER_ALLOWED_METHODS:-reportIncidentAuthorized(bytes32,uint256,bytes),checkInAuthorized(bytes32,bytes32,bytes32,uint256,bytes),pauseIfStale(),pauseIfActiveRootUntrusted()}"
 ALLOWED_METHODS="$(printf '%s' "$ALLOWED_METHODS_RAW" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d')"
 if [ "$(printf '%s\n' "$ALLOWED_METHODS" | wc -l | tr -d ' ')" -lt 1 ]; then
   fail "no allowed methods configured"
@@ -237,6 +259,19 @@ while true; do
             is_bytes32 "$a1" || err="invalid bytes32 arg"
           fi
           ;;
+        reportIncidentAuthorized(bytes32,uint256,bytes))
+          c="$(printf '%s\n' "$args" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$c" -ne 3 ]; then
+            err="invalid args count for reportIncidentAuthorized: ${c}"
+          else
+            a1="$(printf '%s\n' "$args" | sed -n '1p')"
+            a2="$(printf '%s\n' "$args" | sed -n '2p')"
+            a3="$(printf '%s\n' "$args" | sed -n '3p')"
+            is_bytes32 "$a1" || err="invalid bytes32 arg #1"
+            is_uint "$a2" || err="invalid uint256 arg #2"
+            is_hex_bytes "$a3" || err="invalid bytes arg #3"
+          fi
+          ;;
         checkIn(bytes32,bytes32,bytes32))
           c="$(printf '%s\n' "$args" | sed '/^$/d' | wc -l | tr -d ' ')"
           if [ "$c" -ne 3 ]; then
@@ -248,6 +283,23 @@ while true; do
             is_bytes32 "$a1" || err="invalid bytes32 arg #1"
             is_bytes32 "$a2" || err="invalid bytes32 arg #2"
             is_bytes32 "$a3" || err="invalid bytes32 arg #3"
+          fi
+          ;;
+        checkInAuthorized(bytes32,bytes32,bytes32,uint256,bytes))
+          c="$(printf '%s\n' "$args" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$c" -ne 5 ]; then
+            err="invalid args count for checkInAuthorized: ${c}"
+          else
+            a1="$(printf '%s\n' "$args" | sed -n '1p')"
+            a2="$(printf '%s\n' "$args" | sed -n '2p')"
+            a3="$(printf '%s\n' "$args" | sed -n '3p')"
+            a4="$(printf '%s\n' "$args" | sed -n '4p')"
+            a5="$(printf '%s\n' "$args" | sed -n '5p')"
+            is_bytes32 "$a1" || err="invalid bytes32 arg #1"
+            is_bytes32 "$a2" || err="invalid bytes32 arg #2"
+            is_bytes32 "$a3" || err="invalid bytes32 arg #3"
+            is_uint "$a4" || err="invalid uint256 arg #4"
+            is_hex_bytes "$a5" || err="invalid bytes arg #5"
           fi
           ;;
         pauseIfStale())

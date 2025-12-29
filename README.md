@@ -62,13 +62,20 @@ Hardening notes:
 
 ### Optional: tx-outbox relayer (broadcast to chain)
 
-The demo can optionally run a tx-outbox relayer (EOA) that broadcasts allowlisted tx intents.
+The demo can optionally run a tx-outbox **relayer** (EOA) that broadcasts allowlisted tx intents.
+
+Recommended production-like flow (no privileged relayer):
+- `runner/secrets-agent` queue `sig.*.json` signature requests (`blackcat.sig_request`)
+- `signer` signs EIP-712 typed data and converts them into `tx.*.json` (`blackcat.tx_request`)
+- `relayer` broadcasts `tx.*.json` to the chain
 
 ```bash
+SIGNER_PRIVATE_KEY=0x... \
 RELAYER_PRIVATE_KEY=0x... \
 docker compose \
   -f docker/minimal-prod/docker-compose.yml \
   -f docker/minimal-prod/docker-compose.demo.yml \
+  -f docker/minimal-prod/docker-compose.signer.yml \
   -f docker/minimal-prod/docker-compose.relayer.yml \
   up --build
 ```
@@ -80,13 +87,16 @@ This repo also ships an optional **watcher** that can queue permissionless safet
 - `pauseIfActiveRootUntrusted()` (pauses when the active root is no longer trusted by `ReleaseRegistry`)
 
 The watcher only **queues tx intents** to the tx-outbox; broadcasting still requires the relayer.
-Note: broadcasting `checkIn(...)` requires the relayer EOA to be configured as `InstanceController.reporterAuthority`.
+Note: the simplest legacy flow is `BLACKCAT_TRUST_RUNNER_TX_MODE=direct` + relayer configured as `InstanceController.reporterAuthority`
+(so `checkIn(...)` does not revert). Recommended flow is `authorized` + signer + `checkInAuthorized(...)`.
 
 ```bash
+SIGNER_PRIVATE_KEY=0x... \
 RELAYER_PRIVATE_KEY=0x... \
 docker compose \
   -f docker/minimal-prod/docker-compose.yml \
   -f docker/minimal-prod/docker-compose.demo.yml \
+  -f docker/minimal-prod/docker-compose.signer.yml \
   -f docker/minimal-prod/docker-compose.relayer.yml \
   -f docker/minimal-prod/docker-compose.watcher.yml \
   up --build

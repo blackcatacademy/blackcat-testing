@@ -109,7 +109,7 @@ Compatibility note:
    - `trusted_now` flips to `false`
    - `write_allowed=false` immediately blocks writes
    - errors show *why* it failed (transparent, auditable)
-   - the `Tx outbox` panel queues an anonymized `reportIncident(bytes32)` intent (ready for an external relayer)
+   - the `Tx outbox` panel queues an anonymized `report_incident` **signature request** (`sig.*.json`), ready for `signer` + `relayer`
 5. Optional (operator-driven): use `On-chain upgrade info` + Foundry runbooks to show “audit + upgrade”.
 
 ## 3) Run scenarios (live tamper)
@@ -196,7 +196,8 @@ Security note:
 
 ## 3.3) Optional: on-chain “check-ins” + incident reports (tx outbox)
 
-By default, the runner will queue an anonymized incident report when trust fails (into `trust.web3.tx_outbox_dir`).
+By default, the runner will queue an anonymized incident report **signature request** when trust fails
+(`sig.*.json` into `trust.web3.tx_outbox_dir`).
 
 Additionally, the secrets-agent maintains a **tamper-evident audit chain** (hash chain) under `trust.audit.dir`.
 The runner can periodically anchor its rolling head hash to the chain (also via tx outbox).
@@ -210,8 +211,9 @@ docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --b
 ```
 
 Important:
-- `checkIn(bytes32,bytes32,bytes32)` is restricted to `InstanceController.reporterAuthority`.
-- To broadcast check-ins, your relayer EOA must be configured as the reporter authority (or use `checkInAuthorized(...)`).
+- Default `BLACKCAT_TRUST_RUNNER_TX_MODE=authorized` queues **signature requests** for `checkInAuthorized(...)` and requires `signer` + `relayer`.
+- Legacy `BLACKCAT_TRUST_RUNNER_TX_MODE=direct` queues direct tx intents (`checkIn(...)`, `reportIncident(...)`) and requires the relayer EOA to be `reporterAuthority`.
+- `checkIn(bytes32,bytes32,bytes32)` is restricted to `InstanceController.reporterAuthority` (direct mode).
 
 If you also want periodic audit-chain anchors (recommended), set:
 
@@ -223,13 +225,23 @@ docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --b
 Notes:
 - This creates **tx intents only**. Broadcasting requires an external relayer (EOA/Safe/KernelAuthority).
 - Intent payloads are anonymized (hashes + error codes only; no secret material).
-- The runner also performs a best-effort filesystem threat scan of writable dirs and will queue a `reportIncident` intent on findings.
+- The runner also performs a best-effort filesystem threat scan of writable dirs and will queue `report_incident` signature requests on findings.
+
+### Optional: signer (EIP-712)
+
+This repo ships an **optional** signer that:
+- reads `sig.*.json` signature requests from the tx-outbox,
+- signs EIP-712 typed data, and
+- converts them into `tx.*.json` allowlisted calls for the relayer.
+
+Security note:
+- Never bake a private key into any image. Use a **dedicated demo key** and treat it as public/dev.
 
 ### Optional: tx-outbox relayer (EOA)
 
 This repo ships an **optional** relayer service that reads the tx-outbox and broadcasts allowlisted contract calls to
-your InstanceController (default allowlist: `reportIncident(bytes32)`, `checkIn(bytes32,bytes32,bytes32)`,
-`pauseIfStale()`, `pauseIfActiveRootUntrusted()`).
+your InstanceController (default allowlist: `reportIncidentAuthorized(bytes32,uint256,bytes)`,
+`checkInAuthorized(bytes32,bytes32,bytes32,uint256,bytes)`, `pauseIfStale()`, `pauseIfActiveRootUntrusted()`).
 
 Security note:
 - Never bake a private key into any image. Use a **dedicated demo EOA** and treat it as public/dev.
@@ -242,6 +254,7 @@ RELAYER_DRY_RUN=1 \
 docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.signer.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
   up --build
 ```
@@ -250,10 +263,12 @@ Run (broadcast; provide a dedicated demo key via env):
 
 ```bash
 # example: use your own funded demo key
+SIGNER_PRIVATE_KEY=0x... \
 RELAYER_PRIVATE_KEY=0x... \
 docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.signer.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
   up --build
 ```
@@ -282,7 +297,8 @@ Goal: show that when check-ins stop, the watcher can auto-queue `pauseIfStale()`
 pausing the InstanceController on-chain.
 
 Prereqs (once per InstanceController; in `blackcat-kernel-contracts`):
-- Set `reporterAuthority` to the relayer EOA (so `checkIn(...)` can be broadcast).
+- Recommended (authorized flow): set `reporterAuthority` to the signer EOA (so `checkInAuthorized(...)` signatures verify).
+- Legacy (direct flow): set `BLACKCAT_TRUST_RUNNER_TX_MODE=direct` and set `reporterAuthority` to the relayer EOA (so `checkIn(...)` can be broadcast).
 - Set `maxCheckInAgeSec` (and optionally lock it).
 
 Runbooks/scripts:
@@ -292,12 +308,14 @@ Runbooks/scripts:
 Then run the demo with fast check-ins + a simulated runner crash:
 
 ```bash
+SIGNER_PRIVATE_KEY=0x... \
 RELAYER_PRIVATE_KEY=0x... \
 BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC=10 \
 BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC=60 \
 docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.signer.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.watcher.yml \
   up --build

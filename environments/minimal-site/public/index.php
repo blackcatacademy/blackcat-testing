@@ -205,7 +205,7 @@ HttpKernel::run(
         echo '<div class="row"><button id="btnRefreshOutbox">Refresh</button></div>';
         echo '</div>';
         echo '<pre id="outboxBox">{"loading":true}</pre>';
-        echo '<p class="muted">The trust-runner writes anonymized <span class="k">tx intents</span> here (incident reports by default; check-ins optional). A separate relayer can broadcast them to the chain (optional).</p>';
+        echo '<p class="muted">The runner and secrets-agent write anonymized <span class="k">signature requests</span> (<span class="k">sig.*.json</span>) + optional tx intents (<span class="k">tx.*.json</span>) into this outbox. A signer+relayer can broadcast them to the chain (optional).</p>';
         echo '</div>';
 
         echo '<div class="card"><div class="row" style="justify-content:space-between">';
@@ -341,10 +341,11 @@ HttpKernel::run(
                     const c = json.counts;
                     const pending = typeof c.pending === "number" ? c.pending : 0;
                     const processing = typeof c.processing === "number" ? c.processing : 0;
+                    const signed = typeof c.signed === "number" ? c.signed : 0;
                     const sent = typeof c.sent === "number" ? c.sent : 0;
                     const failed = typeof c.failed === "number" ? c.failed : 0;
                     const summary = {
-                      counts: { pending, processing, sent, failed },
+                      counts: { pending, processing, signed, sent, failed },
                       latest: json.latest ?? null
                     };
                     $("outboxBox").textContent = JSON.stringify(summary, null, 2);
@@ -734,7 +735,11 @@ HttpKernel::run(
             return trim($raw);
         };
 
-        $listTxJsonFiles = static function (string $stateDir): array {
+        /**
+         * @param list<'tx'|'sig'> $prefixes
+         * @return list<string>
+         */
+        $listJsonFiles = static function (string $stateDir, array $prefixes): array {
             if (trim($stateDir) === '' || str_contains($stateDir, "\0")) {
                 return [];
             }
@@ -742,14 +747,27 @@ HttpKernel::run(
                 return [];
             }
 
-            $files = glob(rtrim($stateDir, '/\\') . '/tx.*.json') ?: [];
-            rsort($files);
-            return array_values(array_filter($files, 'is_string'));
+            $all = [];
+            foreach ($prefixes as $p) {
+                if ($p !== 'tx' && $p !== 'sig') {
+                    continue;
+                }
+                $files = glob(rtrim($stateDir, '/\\') . '/' . $p . '.*.json') ?: [];
+                foreach ($files as $f) {
+                    if (is_string($f)) {
+                        $all[] = $f;
+                    }
+                }
+            }
+
+            rsort($all);
+            return $all;
         };
 
         $states = [
             'pending' => $dir,
             'processing' => rtrim($dir, '/\\') . '/processing',
+            'signed' => rtrim($dir, '/\\') . '/signed',
             'sent' => rtrim($dir, '/\\') . '/sent',
             'failed' => rtrim($dir, '/\\') . '/failed',
         ];
@@ -778,7 +796,14 @@ HttpKernel::run(
         ];
 
         foreach ($states as $state => $stateDir) {
-            $files = $listTxJsonFiles($stateDir);
+            $prefixes = ['tx'];
+            if ($state === 'pending' || $state === 'processing' || $state === 'failed') {
+                $prefixes = ['tx', 'sig'];
+            } elseif ($state === 'signed') {
+                $prefixes = ['sig'];
+            }
+
+            $files = $listJsonFiles($stateDir, $prefixes);
             $counts[$state] = count($files);
 
             if ($state === 'pending') {
@@ -796,6 +821,7 @@ HttpKernel::run(
                     $latest['pending'][] = [
                         'file' => $base,
                         'type' => $decoded['type'] ?? null,
+                        'kind' => $decoded['kind'] ?? null,
                         'created_at' => $decoded['created_at'] ?? null,
                         'to' => $decoded['to'] ?? null,
                         'method' => $decoded['method'] ?? null,
@@ -902,7 +928,7 @@ HttpKernel::run(
             'ok' => true,
             'counts' => $counts,
             'latest' => $latest,
-            'note' => 'These are tx intents only; broadcasting requires an external relayer (EOA/Safe/KernelAuthority).',
+            'note' => 'Tx outbox holds tx intents + signature requests. Broadcasting requires a signer+relayer (or direct mode).',
         ]);
         return;
     }

@@ -232,23 +232,27 @@ Important:
 
 This demonstrates the on-chain safety flow:
 
-- the runner queues `checkIn(...)` intents periodically (tx-outbox)
-- the relayer broadcasts those check-ins (must be `reporterAuthority`)
+- the runner queues `check_in` signature requests periodically (`sig.*.json` in tx-outbox)
+- the signer converts them into `checkInAuthorized(...)` tx intents (`tx.*.json`)
+- the relayer broadcasts those tx intents (relayer does **not** need to be `reporterAuthority`)
 - if check-ins stop, the watcher queues `pauseIfStale()` (permissionless)
 - the relayer broadcasts the pause and the InstanceController becomes paused on-chain
 
 Prereqs (once per InstanceController):
-- `reporterAuthority` must be the relayer EOA (so `checkIn(...)` does not revert)
+- Recommended (authorized flow): `reporterAuthority` must match the signer key (so `checkInAuthorized(...)` signatures verify)
+- Legacy (direct flow): set `BLACKCAT_TRUST_RUNNER_TX_MODE=direct` and make `reporterAuthority` the relayer EOA (so `checkIn(...)` does not revert)
 - `maxCheckInAgeSec` must be set (and optionally locked)
 
 Run:
 
 ```bash
+SIGNER_PRIVATE_KEY=0x... \
 RELAYER_PRIVATE_KEY=0x... \
 BLACKCAT_TRUST_RUNNER_CHECKIN_INTERVAL_SEC=10 \
 BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC=60 \
 docker compose \
   -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.signer.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.relayer.yml \
   -f blackcat-testing/docker/minimal-prod/docker-compose.watcher.yml \
   up --build
