@@ -12,7 +12,7 @@
             "dist": {
                 "type": "path",
                 "url": "../blackcat-config",
-                "reference": "18299e9ea24eaef662d9e83cdb923d5ea711c586"
+                "reference": "afdbeb0500f6b8a1f2c4da64e856c711f828cf91"
             },
             "require": {
                 "ext-json": "*",
@@ -23,9 +23,6 @@
                 "phpstan/phpstan-phpunit": "^1.4",
                 "phpunit/phpunit": "^11.0"
             },
-            "bin": [
-                "bin/config"
-            ],
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -42,7 +39,7 @@
                     "vendor/bin/phpunit --colors=always"
                 ],
                 "stan": [
-                    "vendor/bin/phpstan analyse --configuration=phpstan.neon"
+                    "vendor/bin/phpstan analyse --configuration=phpstan.neon --memory-limit=512M"
                 ]
             },
             "license": [
@@ -60,7 +57,7 @@
             "dist": {
                 "type": "path",
                 "url": "../blackcat-core",
-                "reference": "306439e7675720711bd3faefe0d47b9945c91633"
+                "reference": "9aee418a69d32350d09b6c34988aa043108d406f"
             },
             "require": {
                 "ext-json": "*",
@@ -71,7 +68,7 @@
                 "psr/simple-cache": "^1.0 || ^2.0 || ^3.0"
             },
             "require-dev": {
-                "phpstan/phpstan": "^1.11",
+                "phpstan/phpstan": "^1.11 || ^2.0",
                 "phpunit/phpunit": "^10.5"
             },
             "suggest": {
@@ -121,7 +118,7 @@
                     "vendor/bin/phpunit --colors=always"
                 ],
                 "stan": [
-                    "vendor/bin/phpstan analyse --memory-limit=512M"
+                    "vendor/bin/phpstan analyse"
                 ]
             },
             "license": [
@@ -2135,13 +2132,13 @@
     ],
     "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": [],
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
         "php": "^8.3",
         "ext-json": "*"
     },
-    "platform-dev": [],
-    "plugin-api-version": "2.6.0"
+    "platform-dev": {},
+    "plugin-api-version": "2.9.0"
 }

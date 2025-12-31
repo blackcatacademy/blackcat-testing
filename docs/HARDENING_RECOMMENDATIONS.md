@@ -127,7 +127,7 @@ Tradeoff:
 - Extremely strong provenance, but upgrades require discipline (you must update+lock attestations when changing runtime/deps/images).
 
 Helpers:
-- `blackcat-config/bin/config runtime:doctor` prints best-effort computed attestation keys/values (and warnings if missing).
-- `blackcat-config/bin/config runtime:attestation:composer-lock`
-- `blackcat-config/bin/config runtime:attestation:php-fingerprint`
-- `blackcat-config/bin/config runtime:attestation:image-digest`
+- `blackcat config runtime doctor` prints best-effort computed attestation keys/values (and warnings if missing).
+- `blackcat config runtime attestation composer-lock`
+- `blackcat config runtime attestation php-fingerprint`
+- `blackcat config runtime attestation image-digest`
