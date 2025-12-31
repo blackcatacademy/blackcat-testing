@@ -280,6 +280,111 @@
         font-size: 12px;
         line-height: 1.45;
       }
+
+      h2 {
+        margin: 0;
+        font-size: 15px;
+        letter-spacing: -0.01em;
+      }
+
+      ul {
+        margin: 10px 0 0 18px;
+        padding: 0;
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      li {
+        margin: 6px 0;
+      }
+
+      .bars {
+        margin-top: 10px;
+        display: grid;
+        gap: 10px;
+      }
+      .barRow {
+        display: grid;
+        grid-template-columns: 120px 1fr 62px;
+        gap: 10px;
+        align-items: center;
+      }
+      .barLabel {
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .barTrack {
+        height: 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.05);
+        overflow: hidden;
+      }
+      .barFill {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        transition: width 220ms ease;
+      }
+      .barFill.secure {
+        background: linear-gradient(90deg, rgba(34, 197, 94, 0.95), rgba(34, 197, 94, 0.55));
+      }
+      .barFill.insecure {
+        background: linear-gradient(90deg, rgba(239, 68, 68, 0.95), rgba(239, 68, 68, 0.55));
+      }
+      .barVal {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.88);
+        text-align: right;
+      }
+
+      .story {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 10px;
+      }
+      .node {
+        grid-column: span 12;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.18);
+      }
+      @media (min-width: 980px) {
+        .node {
+          grid-column: span 3;
+        }
+      }
+      .nodeTitle {
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      .nodeBody {
+        margin-top: 4px;
+        color: var(--m);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .node.pending {
+        opacity: 0.55;
+      }
+      .node.ok {
+        border-color: rgba(34, 197, 94, 0.55);
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.10);
+      }
+      .node.bad {
+        border-color: rgba(239, 68, 68, 0.60);
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.10);
+      }
+      .node.active {
+        border-color: rgba(96, 165, 250, 0.65);
+        box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
+      }
     </style>
   </head>
   <body>
@@ -305,6 +410,84 @@
 
     <div class="wrap">
       <div class="grid">
+        <div class="card">
+          <div class="row" style="justify-content: space-between">
+            <div class="row">
+              <span class="pill"><strong>One-page pitch</strong></span>
+              <span class="pill">kernel security</span>
+              <span class="pill">fail-closed by design</span>
+              <span class="pill">EVM trust anchor</span>
+            </div>
+            <div class="row">
+              <span class="pill">ports: <span class="k">8088</span> (protected) / <span class="k">8089</span> (unprotected)</span>
+            </div>
+          </div>
+
+          <div class="split" style="margin-top: 10px">
+            <div class="left">
+              <h2>What is BlackCat?</h2>
+              <div class="muted">
+                BlackCat is a modular security kernel for PHP websites. It replaces “trust the hosting” with a strict model:
+                integrity + policy + runtime-config are committed and verified against an on-chain authority. When anything
+                important diverges, the system fails closed.
+              </div>
+
+              <ul>
+                <li><strong>On-chain integrity</strong>: the server refuses to operate if local disk is tampered (commitments are verified on a quorum of RPC endpoints).</li>
+                <li><strong>Secrets boundary</strong>: the web runtime cannot read raw keys/DB creds; sensitive operations happen behind a local agent boundary.</li>
+                <li><strong>Fail-closed enforcement</strong>: no “bypass switch” in production — unsafe writes/decrypts are blocked by default.</li>
+                <li><strong>Auditable incident trail</strong>: anomalies queue anonymized incident intents/signature requests for relayers/watchers.</li>
+              </ul>
+
+              <div class="muted">
+                This demo proves the model by comparing an intentionally insecure control target with a protected target in the same stack.
+              </div>
+            </div>
+
+            <div class="right">
+              <h2>Secure vs Unprotected (live score)</h2>
+              <div class="bars" aria-label="secure vs unprotected graph">
+                <div class="barRow">
+                  <div class="barLabel">Protected</div>
+                  <div class="barTrack"><div id="barSecure" class="barFill secure"></div></div>
+                  <div id="barSecureVal" class="barVal">?</div>
+                </div>
+                <div class="barRow">
+                  <div class="barLabel">Unprotected</div>
+                  <div class="barTrack"><div id="barInsecure" class="barFill insecure"></div></div>
+                  <div id="barInsecureVal" class="barVal">?</div>
+                </div>
+                <div class="muted">
+                  The score is derived from live probes (key exfiltration, DB-credential exposure, raw PDO bypass).
+                </div>
+              </div>
+
+              <h2 style="margin-top: 12px">Tamper → Fail-closed → Incident (live)</h2>
+              <div class="story" aria-label="live story">
+                <div id="storyTrusted" class="node pending">
+                  <div class="nodeTitle">Trusted</div>
+                  <div class="nodeBody">On-chain state matches local commitments.</div>
+                </div>
+                <div id="storyAnomaly" class="node pending">
+                  <div class="nodeTitle">Anomaly detected</div>
+                  <div class="nodeBody">Tamper / mismatch / RPC outage / byzantine disagreement.</div>
+                </div>
+                <div id="storyFailClosed" class="node pending">
+                  <div class="nodeTitle">Fail-closed</div>
+                  <div class="nodeBody">Sensitive ops are blocked (read/write/secrets).</div>
+                </div>
+                <div id="storyIncident" class="node pending">
+                  <div class="nodeTitle">Incident queued</div>
+                  <div class="nodeBody">Anonymized incident intent/signature request appears in tx-outbox.</div>
+                </div>
+              </div>
+              <div class="muted">
+                Tip: press <strong>Run guided demo</strong> and watch the nodes light up automatically when the scheduled tamper triggers.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="row" style="justify-content: space-between">
             <div class="row">
@@ -476,6 +659,107 @@
         tamperAfterSec: null,
       };
 
+      const pitchState = {
+        probes: {
+          insecure_key_leak: null,
+          insecure_db_leak: null,
+          insecure_pdo: null,
+          secure_key_blocked: null,
+          secure_db_blocked: null,
+          secure_pdo_blocked: null,
+        },
+        story: {
+          everTrusted: false,
+          anomalyTriggered: false,
+          failClosed: false,
+          incidentQueued: false,
+          lastTrusted: null,
+        },
+        outbox: {
+          lastCountsJson: null,
+        },
+      };
+
+      function clamp(n, min, max) {
+        if (typeof n !== "number" || !Number.isFinite(n)) return min;
+        return Math.min(max, Math.max(min, n));
+      }
+
+      function setNode(id, state) {
+        const n = el(id);
+        if (!n) return;
+        n.className = "node " + state;
+      }
+
+      function flashNode(id, finalState) {
+        setNode(id, "active");
+        window.setTimeout(() => setNode(id, finalState), 1200);
+      }
+
+      function computeScore(kind) {
+        const isBool = (v) => v === true || v === false;
+        let s = 100;
+        if (kind === "insecure") {
+          if (!isBool(pitchState.probes.insecure_key_leak) || !isBool(pitchState.probes.insecure_db_leak) || !isBool(pitchState.probes.insecure_pdo)) {
+            return null;
+          }
+          if (pitchState.probes.insecure_key_leak === true) s -= 40;
+          if (pitchState.probes.insecure_db_leak === true) s -= 35;
+          if (pitchState.probes.insecure_pdo === true) s -= 25;
+          return clamp(s, 0, 100);
+        }
+
+        // secure
+        if (!isBool(pitchState.probes.secure_key_blocked) || !isBool(pitchState.probes.secure_db_blocked) || !isBool(pitchState.probes.secure_pdo_blocked)) {
+          return null;
+        }
+        if (pitchState.probes.secure_key_blocked === false) s -= 40;
+        if (pitchState.probes.secure_db_blocked === false) s -= 35;
+        if (pitchState.probes.secure_pdo_blocked === false) s -= 25;
+        return clamp(s, 0, 100);
+      }
+
+      function renderScoreBars() {
+        const secureScore = computeScore("secure");
+        const insecureScore = computeScore("insecure");
+
+        const bSecure = el("barSecure");
+        const bInsecure = el("barInsecure");
+        const vSecure = el("barSecureVal");
+        const vInsecure = el("barInsecureVal");
+
+        if (bSecure && vSecure) {
+          if (typeof secureScore === "number") {
+            bSecure.style.width = secureScore + "%";
+            vSecure.textContent = secureScore + "/100";
+          } else {
+            bSecure.style.width = "0%";
+            vSecure.textContent = "?";
+          }
+        }
+        if (bInsecure && vInsecure) {
+          if (typeof insecureScore === "number") {
+            bInsecure.style.width = insecureScore + "%";
+            vInsecure.textContent = insecureScore + "/100";
+          } else {
+            bInsecure.style.width = "0%";
+            vInsecure.textContent = "?";
+          }
+        }
+      }
+
+      function renderStory() {
+        if (pitchState.story.everTrusted) {
+          setNode("storyTrusted", pitchState.story.lastTrusted === true ? "ok" : "bad");
+        } else {
+          setNode("storyTrusted", pitchState.story.lastTrusted === true ? "ok" : "pending");
+        }
+
+        setNode("storyAnomaly", pitchState.story.anomalyTriggered ? "ok" : "pending");
+        setNode("storyFailClosed", pitchState.story.failClosed ? "ok" : "pending");
+        setNode("storyIncident", pitchState.story.incidentQueued ? "ok" : "pending");
+      }
+
       function deriveInsecureBaseFromHost() {
         try {
           const u = new URL(window.location.href);
@@ -601,6 +885,31 @@
 
           timelinePush(trusted, rpcOk);
           renderTimeline();
+
+          // Story progression: trusted -> anomaly -> fail-closed
+          if (trusted === true) {
+            pitchState.story.everTrusted = true;
+          }
+
+          if (pitchState.story.lastTrusted === true && trusted === false) {
+            pitchState.story.anomalyTriggered = true;
+            flashNode("storyAnomaly", "ok");
+          } else if (pitchState.story.anomalyTriggered === false && trusted === false && pitchState.story.everTrusted) {
+            pitchState.story.anomalyTriggered = true;
+            setNode("storyAnomaly", "ok");
+          }
+
+          const readAllowed = t && t.read_allowed === true ? true : (t && t.read_allowed === false ? false : null);
+          const writeAllowed = t && t.write_allowed === true ? true : (t && t.write_allowed === false ? false : null);
+          if (pitchState.story.anomalyTriggered && (readAllowed === false || writeAllowed === false)) {
+            if (!pitchState.story.failClosed) {
+              pitchState.story.failClosed = true;
+              flashNode("storyFailClosed", "ok");
+            }
+          }
+
+          pitchState.story.lastTrusted = trusted;
+          renderStory();
         } catch (e) {
           el("trustTitle").textContent = "Health fetch failed";
           el("dotTrust").className = "dot bad";
@@ -611,6 +920,42 @@
         try {
           const { json } = await fetchJson("/demo/tx-outbox");
           el("outbox").textContent = JSON.stringify(json, null, 2);
+
+          // Detect queued incident intents/signature requests.
+          const latest = json && typeof json.latest === "object" ? json.latest : null;
+          const pending = latest && Array.isArray(latest.pending) ? latest.pending : [];
+          const sent = latest && Array.isArray(latest.sent) ? latest.sent : [];
+          const failed = latest && Array.isArray(latest.failed) ? latest.failed : [];
+
+          const hasIncident = (arr) => {
+            if (!Array.isArray(arr)) return false;
+            return arr.some((it) => {
+              if (!it || typeof it !== "object") return false;
+
+              const topKind = typeof it.kind === "string" ? it.kind : null;
+              const topMethod = typeof it.method === "string" ? it.method : null;
+              const topMeta = it.meta && typeof it.meta === "object" ? it.meta : null;
+
+              const intent = it.intent && typeof it.intent === "object" ? it.intent : null;
+              const intentMethod = intent && typeof intent.method === "string" ? intent.method : null;
+              const intentMeta = intent && intent.meta && typeof intent.meta === "object" ? intent.meta : null;
+
+              const kind = topKind;
+              const method = topMethod || intentMethod;
+              const meta = topMeta || intentMeta;
+
+              if (kind === "report_incident") return true;
+              if (method === "reportIncident(bytes32)" || method === "reportIncidentAuthorized(bytes32,uint256,bytes)") return true;
+              if (meta && meta.kind === "filesystem_scan") return true;
+              return false;
+            });
+          };
+
+          if (!pitchState.story.incidentQueued && (hasIncident(pending) || hasIncident(sent) || hasIncident(failed))) {
+            pitchState.story.incidentQueued = true;
+            flashNode("storyIncident", "ok");
+            renderStory();
+          }
         } catch (e) {
           el("outbox").textContent = JSON.stringify({ ok: false, error: "outbox_fetch_failed" }, null, 2);
         }
@@ -672,43 +1017,55 @@
         try {
           const r = await probeInsecureLeakKey();
           setBadge("bInsecureKey", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (key readable)" : "Unexpected");
+          pitchState.probes.insecure_key_leak = r.ok === true;
         } catch (e) {
           setBadge("bInsecureKey", "bad", "Fetch failed");
+          pitchState.probes.insecure_key_leak = null;
         }
 
         try {
           const r = await probeInsecureLeakDb();
           setBadge("bInsecureDbCreds", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (db creds exposed)" : "Unexpected");
+          pitchState.probes.insecure_db_leak = r.ok === true;
         } catch (e) {
           setBadge("bInsecureDbCreds", "bad", "Fetch failed");
+          pitchState.probes.insecure_db_leak = null;
         }
 
         try {
           const r = await probeInsecurePdoBypass();
           setBadge("bInsecurePdo", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (raw PDO ok)" : "Unexpected");
+          pitchState.probes.insecure_pdo = r.ok === true;
         } catch (e) {
           setBadge("bInsecurePdo", "bad", "Fetch failed");
+          pitchState.probes.insecure_pdo = null;
         }
 
         try {
           const r = await probeSecureDenied("/bypass/keys");
           setBadge("bSecureKey", r.ok ? "ok" : "bad", r.ok ? "Blocked (403)" : "Unexpected");
+          pitchState.probes.secure_key_blocked = r.ok === true;
         } catch (e) {
           setBadge("bSecureKey", "bad", "Fetch failed");
+          pitchState.probes.secure_key_blocked = null;
         }
 
         try {
           const r = await probeSecureDenied("/bypass/db-creds");
           setBadge("bSecureDbCreds", r.ok ? "ok" : "bad", r.ok ? "Blocked (403)" : "Unexpected");
+          pitchState.probes.secure_db_blocked = r.ok === true;
         } catch (e) {
           setBadge("bSecureDbCreds", "bad", "Fetch failed");
+          pitchState.probes.secure_db_blocked = null;
         }
 
         try {
           const r = await probeSecureDenied("/bypass/pdo");
           setBadge("bSecurePdo", r.ok ? "ok" : "bad", r.ok ? "Blocked (403)" : "Unexpected");
+          pitchState.probes.secure_pdo_blocked = r.ok === true;
         } catch (e) {
           setBadge("bSecurePdo", "bad", "Fetch failed");
+          pitchState.probes.secure_pdo_blocked = null;
         }
 
         try {
@@ -734,6 +1091,8 @@
         }
 
         setBadge("bInsecureCrypto", "warn", "See /leak/key (control)");
+
+        renderScoreBars();
       }
 
       // ===== Guided demo (autopilot) =====
@@ -827,4 +1186,3 @@
     </script>
   </body>
 </html>
-
