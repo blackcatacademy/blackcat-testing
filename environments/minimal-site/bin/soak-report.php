@@ -10,8 +10,8 @@ use BlackCat\Testing\Soak\SoakReportGenerator;
  * Generate a Markdown report for a completed docker harness run.
  *
  * Defaults (docker/minimal-prod):
- * - logs: /var/log/blackcat-testing (mounted from blackcat-testing/var/harness/minimal-prod/logs)
- * - out:  /var/report (mounted from blackcat-testing/var/harness/minimal-prod/reports)
+ * - logs: /var/lib/blackcat/harness/logs (mounted from blackcat-testing/var/harness/minimal-prod/logs)
+ * - out:  /var/lib/blackcat/harness/reports (mounted from blackcat-testing/var/harness/minimal-prod/reports)
  * - config: /etc/blackcat/config.runtime.json (runtime config volume)
  */
 
@@ -51,8 +51,8 @@ foreach ($args as $a) {
 }
 
 $runId = $opts['run-id'] ?? getenv('BLACKCAT_SOAK_RUN_ID') ?: null;
-$logsDir = $opts['logs-dir'] ?? getenv('BLACKCAT_SOAK_LOG_DIR') ?: '/var/log/blackcat-testing';
-$outDir = $opts['out-dir'] ?? getenv('BLACKCAT_SOAK_REPORT_OUT_DIR') ?: '/var/report';
+$logsDir = $opts['logs-dir'] ?? getenv('BLACKCAT_SOAK_LOG_DIR') ?: '/var/lib/blackcat/harness/logs';
+$outDir = $opts['out-dir'] ?? getenv('BLACKCAT_SOAK_REPORT_OUT_DIR') ?: '/var/lib/blackcat/harness/reports';
 $outboxDir = $opts['outbox-dir'] ?? null;
 $configPath = $opts['config'] ?? getenv('BLACKCAT_CONFIG_PATH') ?: '/etc/blackcat/config.runtime.json';
 
@@ -70,4 +70,3 @@ try {
     fwrite(STDERR, "[soak-report] ERROR: " . $e->getMessage() . "\n");
     exit(1);
 }
-

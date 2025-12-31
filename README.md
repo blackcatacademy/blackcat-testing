@@ -51,6 +51,7 @@ Defaults (Edgen, strict):
 
 Open:
 - `http://localhost:8088/` (protected dashboard)
+- `http://localhost:8088/presentation.html` (partner/investor view: secure vs unprotected)
 - `http://localhost:8089/` (unprotected demo)
 - `http://localhost:8088/health` (protected raw JSON)
 - `http://localhost:8088/demo/tx-outbox` (tx intents; incident reports, optional check-ins, audit-chain anchors)

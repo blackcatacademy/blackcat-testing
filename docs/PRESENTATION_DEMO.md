@@ -55,6 +55,7 @@ docker compose \
 
 Open:
 - Protected dashboard: `http://localhost:8088/`
+- Presentation view (partners/investors): `http://localhost:8088/presentation.html`
 - Unprotected demo (control target): `http://localhost:8089/`
 - Raw status (protected): `http://localhost:8088/health`
 
@@ -63,6 +64,7 @@ The dashboard shows:
 - on-chain `active_root` + `active_policy_hash`
 - the current failure reason (`error_codes` / `errors`) when the system fails closed
 - a `Tx outbox` panel (`GET /demo/tx-outbox`) with anonymized tx intents (incident reports; optional check-ins)
+- (presentation view) an auto-verified secure-vs-unprotected comparison and a guided “autopilot” demo button
 
 Optional:
 - Debug status (not for monitoring): `http://localhost:8088/health/debug`
@@ -111,6 +113,12 @@ Compatibility note:
    - errors show *why* it failed (transparent, auditable)
    - the `Tx outbox` panel queues an anonymized `report_incident` **signature request** (`sig.*.json`), ready for `signer` + `relayer`
 5. Optional (operator-driven): use `On-chain upgrade info` + Foundry runbooks to show “audit + upgrade”.
+
+Tip (for partners): open `http://localhost:8088/presentation.html` and press **Run guided demo**.
+It will:
+- show the unprotected leak endpoints,
+- run the protected probes,
+- then wait for the tamper-triggered trust flip and refresh the tx-outbox automatically.
 
 ## 3) Run scenarios (live tamper)
 

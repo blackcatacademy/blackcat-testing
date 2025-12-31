@@ -5,6 +5,9 @@ services:
       BLACKCAT_TESTING_DEMO_WALLETS_FILE: "${BLACKCAT_TESTING_DEMO_WALLETS_FILE:-/etc/blackcat/demo/demo.wallets.public.json}"
     volumes:
       - ../../var/demo/public:/etc/blackcat/demo:ro
+      # Presentation-only: expose attacker harness logs/reports inside open_basedir-safe roots.
+      - ../../var/harness/minimal-prod/logs:/var/lib/blackcat/harness/logs:ro
+      - ../../var/harness/minimal-prod/reports:/var/lib/blackcat/harness/reports
 
   insecure:
     build:

@@ -21,8 +21,45 @@ final class SoakReportGenerator
         ?string $outboxDir = null,
         ?string $runtimeConfigPath = null,
     ): string {
-        $logsDir = self::normalizeDir($logsDir, 'logs_dir');
         $outDir = self::normalizeDir($outDir, 'out_dir', createIfMissing: true);
+
+        $report = self::buildReport($runId, $logsDir, $outboxDir, $runtimeConfigPath);
+        $outPath = $outDir . DIRECTORY_SEPARATOR . 'SOAK_REPORT_' . $report['run_id'] . '.md';
+        $bytes = @file_put_contents($outPath, $report['markdown']);
+        if (!is_int($bytes) || $bytes < 1) {
+            throw new \RuntimeException('unable to write report: ' . $outPath);
+        }
+
+        return $outPath;
+    }
+
+    /**
+     * Generates an English Markdown report and returns it as a string.
+     *
+     * This is useful for:
+     * - streaming the report from a web UI (presentation mode),
+     * - environments where writing to disk is not desired.
+     */
+    public static function generateMarkdown(
+        ?string $runId,
+        string $logsDir,
+        ?string $outboxDir = null,
+        ?string $runtimeConfigPath = null,
+    ): string {
+        $report = self::buildReport($runId, $logsDir, $outboxDir, $runtimeConfigPath);
+        return $report['markdown'];
+    }
+
+    /**
+     * @return array{run_id:string,markdown:string}
+     */
+    private static function buildReport(
+        ?string $runId,
+        string $logsDir,
+        ?string $outboxDir,
+        ?string $runtimeConfigPath,
+    ): array {
+        $logsDir = self::normalizeDir($logsDir, 'logs_dir');
 
         $runId = self::resolveRunId($runId, $logsDir);
 
@@ -61,13 +98,10 @@ final class SoakReportGenerator
 
         $md = self::renderMarkdown($runId, $meta, $summary, $events, $runtimeCfg, $outbox);
 
-        $outPath = $outDir . DIRECTORY_SEPARATOR . 'SOAK_REPORT_' . $runId . '.md';
-        $bytes = @file_put_contents($outPath, $md);
-        if (!is_int($bytes) || $bytes < 1) {
-            throw new \RuntimeException('unable to write report: ' . $outPath);
-        }
-
-        return $outPath;
+        return [
+            'run_id' => $runId,
+            'markdown' => $md,
+        ];
     }
 
     private static function normalizeDir(string $path, string $label, bool $createIfMissing = false): string

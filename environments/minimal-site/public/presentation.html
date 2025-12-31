@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>BlackCat Demo — Secure vs Unprotected</title>
+    <meta name="description" content="Interactive investor/demo view: compare an unprotected site with a BlackCat-protected site (TrustKernel, on-chain integrity, fail-closed)." />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg0: #070a10;
+        --bg1: #0a1222;
+        --card: rgba(255, 255, 255, 0.04);
+        --b: rgba(255, 255, 255, 0.12);
+        --t: rgba(255, 255, 255, 0.92);
+        --m: rgba(255, 255, 255, 0.65);
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        --ok: #22c55e;
+        --bad: #ef4444;
+        --warn: #f59e0b;
+        --accent: #60a5fa;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        color: var(--t);
+        background:
+          radial-gradient(1200px 600px at 20% 10%, rgba(96, 165, 250, 0.15), transparent 65%),
+          radial-gradient(900px 500px at 80% 20%, rgba(34, 197, 94, 0.10), transparent 60%),
+          linear-gradient(180deg, var(--bg1), var(--bg0));
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      header {
+        border-bottom: 1px solid var(--b);
+        background: rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
+      }
+
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 18px;
+      }
+
+      .hero {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+
+      .hero h1 {
+        margin: 0 0 6px;
+        font-size: 26px;
+        letter-spacing: -0.02em;
+      }
+
+      .hero p {
+        margin: 0;
+        color: var(--m);
+        max-width: 860px;
+      }
+
+      .cta {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      button {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--b);
+        color: var(--t);
+        padding: 10px 12px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:hover {
+        border-color: rgba(96, 165, 250, 0.55);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .btnPrimary {
+        background: linear-gradient(180deg, rgba(96, 165, 250, 0.25), rgba(96, 165, 250, 0.10));
+        border-color: rgba(96, 165, 250, 0.55);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .card {
+        grid-column: span 12;
+        background: var(--card);
+        border: 1px solid var(--b);
+        border-radius: 16px;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      @media (min-width: 980px) {
+        .half {
+          grid-column: span 6;
+        }
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        padding: 7px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--b);
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 12px;
+        color: var(--m);
+      }
+      .pill strong {
+        color: var(--t);
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--warn);
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+      }
+      .dot.ok {
+        background: var(--ok);
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+      }
+      .dot.bad {
+        background: var(--bad);
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
+      }
+
+      .muted {
+        color: var(--m);
+        font-size: 12px;
+        margin-top: 10px;
+        line-height: 1.45;
+      }
+
+      .k {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      pre {
+        margin: 12px 0 0;
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        overflow: auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.45;
+        color: rgba(255, 255, 255, 0.86);
+        max-height: 260px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 13px;
+      }
+      th, td {
+        text-align: left;
+        border-top: 1px solid rgba(255, 255, 255, 0.10);
+        padding: 10px 8px;
+        vertical-align: top;
+      }
+      th {
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .badge.ok { border-color: rgba(34, 197, 94, 0.5); }
+      .badge.bad { border-color: rgba(239, 68, 68, 0.5); }
+      .badge.warn { border-color: rgba(245, 158, 11, 0.55); }
+
+      .split {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+      }
+      .split > .left {
+        grid-column: span 12;
+      }
+      .split > .right {
+        grid-column: span 12;
+      }
+      @media (min-width: 980px) {
+        .split > .left {
+          grid-column: span 7;
+        }
+        .split > .right {
+          grid-column: span 5;
+        }
+      }
+
+      iframe {
+        width: 100%;
+        height: 420px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.25);
+      }
+
+      canvas {
+        width: 100%;
+        height: 56px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(0, 0, 0, 0.25);
+      }
+
+      .steps {
+        margin-top: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .step {
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(0, 0, 0, 0.18);
+      }
+      .stepTitle {
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .stepBody {
+        color: var(--m);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <div class="hero">
+          <div>
+            <h1>BlackCat Demo — Secure vs Unprotected</h1>
+            <p>
+              This is a production-like simulation. The protected target runs <span class="k">blackcat-core</span> + <span class="k">blackcat-config</span>
+              (TrustKernel, integrity, policy enforcement). The control target is intentionally insecure.
+            </p>
+          </div>
+          <div class="cta">
+            <a class="pill" href="/" title="Technical dashboard (protected)"><strong>Open technical dashboard</strong> →</a>
+            <a class="pill" id="lnkInsecure" href="#" target="_blank" rel="noopener"><strong>Open unprotected demo</strong> →</a>
+            <button class="btnPrimary" id="btnAutopilot">Run guided demo (90s)</button>
+            <button id="btnRefresh">Refresh checks</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="grid">
+        <div class="card">
+          <div class="row" style="justify-content: space-between">
+            <div class="row">
+              <span id="dotTrust" class="dot"></span>
+              <span class="pill"><strong id="trustTitle">Loading…</strong></span>
+              <span class="pill">enforcement: <strong id="enf">?</strong></span>
+              <span class="pill">rpc_ok: <strong id="rpcOk">?</strong></span>
+              <span class="pill">read_allowed: <strong id="readAllowed">?</strong></span>
+              <span class="pill">write_allowed: <strong id="writeAllowed">?</strong></span>
+              <span class="pill">paused: <strong id="paused">?</strong></span>
+            </div>
+            <div class="row">
+              <span class="pill">chain_id: <strong id="chainId">?</strong></span>
+              <span class="pill">controller: <a class="k" id="controllerLink" href="#" target="_blank" rel="noopener">?</a></span>
+            </div>
+          </div>
+          <div class="muted">
+            The protected kernel is anchored to an on-chain InstanceController. If integrity/policy/runtime-config diverge, the kernel fails closed and blocks sensitive operations.
+          </div>
+          <div style="margin-top: 10px">
+            <canvas id="timeline" width="1200" height="56" aria-label="trust timeline"></canvas>
+            <div class="muted">Timeline (last ~120s): green=trusted, red=untrusted, yellow=RPC outage.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="split">
+            <div class="left">
+              <div class="row" style="justify-content: space-between">
+                <div class="row">
+                  <span class="pill"><strong>Side-by-side security checks</strong></span>
+                  <span class="pill">auto-verified (live)</span>
+                </div>
+                <div class="row">
+                  <button id="btnShowLeakKey">Show unprotected: leak key</button>
+                  <button id="btnShowLeakDb">Show unprotected: leak DB creds</button>
+                </div>
+              </div>
+
+              <table aria-label="security comparison">
+                <thead>
+                  <tr>
+                    <th>Check</th>
+                    <th>Unprotected (expected: vulnerable)</th>
+                    <th>Protected (expected: blocked)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Key exfiltration</strong><div class="muted">Can the web runtime read the crypto key file?</div></td>
+                    <td><span id="bInsecureKey" class="badge warn">?</span></td>
+                    <td><span id="bSecureKey" class="badge warn">?</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>DB credential exfiltration</strong><div class="muted">Can the web runtime read DB credentials / env?</div></td>
+                    <td><span id="bInsecureDbCreds" class="badge warn">?</span></td>
+                    <td><span id="bSecureDbCreds" class="badge warn">?</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Raw PDO bypass</strong><div class="muted">Can attacker bypass wrappers and open raw PDO?</div></td>
+                    <td><span id="bInsecurePdo" class="badge warn">?</span></td>
+                    <td><span id="bSecurePdo" class="badge warn">?</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Crypto operation (keyless boundary)</strong><div class="muted">Crypto still works when raw key export is blocked.</div></td>
+                    <td><span id="bInsecureCrypto" class="badge warn">?</span></td>
+                    <td><span id="bSecureCrypto" class="badge warn">?</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>DB write (gated)</strong><div class="muted">Write works only when TrustKernel allows it.</div></td>
+                    <td><span id="bInsecureWrite" class="badge warn">?</span></td>
+                    <td><span id="bSecureWrite" class="badge warn">?</span></td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <pre id="log">Ready.</pre>
+            </div>
+
+            <div class="right">
+              <div class="row" style="justify-content: space-between">
+                <div class="row"><span class="pill"><strong>Unprotected preview</strong></span><span class="pill">control target</span></div>
+                <div class="row"><span class="pill">src: <span class="k" id="insecureSrc">?</span></span></div>
+              </div>
+              <iframe id="insecureFrame" title="unprotected demo"></iframe>
+              <div class="muted">
+                This iframe renders the unprotected demo. It is intentionally insecure and should never be deployed publicly.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card half">
+          <div class="row" style="justify-content: space-between">
+            <div class="row"><span class="pill"><strong>Tx outbox</strong></span><span class="pill">anonymized signals</span></div>
+            <div class="row"><button id="btnRefreshOutbox">Refresh</button></div>
+          </div>
+          <pre id="outbox">{"loading":true}</pre>
+          <div class="muted">
+            When something suspicious happens (tamper, filesystem findings, RPC byzantine/outage), the system queues signature requests and tx intents for incident response.
+          </div>
+        </div>
+
+        <div class="card half">
+          <div class="row" style="justify-content: space-between">
+            <div class="row"><span class="pill"><strong>Soak harness (attacker simulation)</strong></span><span class="pill">latest run</span></div>
+            <div class="row"><button id="btnRefreshSoak">Refresh</button><a class="pill" id="lnkSoakReport" href="/demo/soak/report" target="_blank" rel="noopener"><strong>Open report</strong> →</a></div>
+          </div>
+          <pre id="soak">{"loading":true}</pre>
+          <div class="muted">
+            A dedicated attacker container continuously probes health/DB/crypto and common web attack surfaces; results are summarized here and can be exported to a Markdown report.
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <span class="pill"><strong>What this demonstrates</strong></span>
+            <span class="pill">fail-closed</span>
+            <span class="pill">on-chain trust</span>
+            <span class="pill">secrets boundary</span>
+            <span class="pill">auditable incidents</span>
+          </div>
+          <div class="steps">
+            <div class="step">
+              <div class="stepTitle">1) Without BlackCat, secrets leak</div>
+              <div class="stepBody">
+                The unprotected control target can leak key material and DB credentials to anyone who can run code in the web runtime.
+              </div>
+            </div>
+            <div class="step">
+              <div class="stepTitle">2) With BlackCat, bypasses are blocked</div>
+              <div class="stepBody">
+                Even if an attacker reaches PHP, direct reads are blocked by OS permissions and the agent enforces TrustKernel before serving any sensitive operation.
+              </div>
+            </div>
+            <div class="step">
+              <div class="stepTitle">3) On tamper, the kernel fails closed</div>
+              <div class="stepBody">
+                When integrity/policy/runtime-config diverge, <span class="k">write_allowed=false</span> immediately blocks writes, incidents can be queued, and operators can auto-pause on-chain.
+              </div>
+            </div>
+          </div>
+          <div class="muted">
+            Tip: open the technical dashboard (<a href="/">/</a>) for low-level details and on-chain upgrade helper JSON.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const el = (id) => document.getElementById(id);
+      const logEl = el("log");
+      const log = (msg) => {
+        const line = new Date().toISOString() + " " + msg;
+        logEl.textContent = line + "\\n" + logEl.textContent;
+      };
+
+      const setBadge = (id, kind, text) => {
+        const b = el(id);
+        b.className = "badge " + kind;
+        b.textContent = text;
+      };
+
+      const metaState = {
+        insecureBase: "http://localhost:8089",
+        explorerBase: null,
+        chainId: null,
+        controller: null,
+        tamperAfterSec: null,
+      };
+
+      function deriveInsecureBaseFromHost() {
+        try {
+          const u = new URL(window.location.href);
+          const host = u.hostname || "localhost";
+          return "http://" + host + ":8089";
+        } catch {
+          return "http://localhost:8089";
+        }
+      }
+
+      async function fetchJson(url) {
+        const res = await fetch(url, { cache: "no-store" });
+        const text = await res.text();
+        let json;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          throw new Error("invalid json from " + url + ": " + text.slice(0, 120));
+        }
+        return { res, json };
+      }
+
+      function shortHex(h) {
+        if (typeof h !== "string" || !h.startsWith("0x")) return "?";
+        if (h.length <= 18) return h;
+        return h.slice(0, 10) + "…" + h.slice(-8);
+      }
+
+      async function refreshMeta() {
+        try {
+          const { json } = await fetchJson("/demo/meta");
+          const insecure = json && typeof json.insecure_demo_url === "string" ? json.insecure_demo_url : null;
+          const base = insecure ? insecure.replace(/\\/+$/, "") : null;
+          metaState.insecureBase = base || deriveInsecureBaseFromHost();
+          metaState.chainId = typeof json.chain_id === "number" ? json.chain_id : null;
+          metaState.controller = typeof json.instance_controller === "string" ? json.instance_controller : null;
+          metaState.explorerBase = typeof json.explorer_base_url === "string" ? json.explorer_base_url : null;
+          metaState.tamperAfterSec = typeof json.demo === "object" && json.demo && typeof json.demo.tamper_after_sec === "number"
+            ? json.demo.tamper_after_sec
+            : null;
+
+          el("lnkInsecure").href = metaState.insecureBase + "/";
+          el("insecureSrc").textContent = metaState.insecureBase + "/";
+          el("insecureFrame").src = metaState.insecureBase + "/";
+
+          if (metaState.chainId !== null) {
+            el("chainId").textContent = String(metaState.chainId);
+          }
+
+          if (metaState.controller && metaState.explorerBase) {
+            el("controllerLink").textContent = shortHex(metaState.controller);
+            el("controllerLink").href = metaState.explorerBase.replace(/\\/+$/, "") + "/address/" + metaState.controller;
+          } else if (metaState.controller) {
+            el("controllerLink").textContent = shortHex(metaState.controller);
+            el("controllerLink").href = "#";
+          } else {
+            el("controllerLink").textContent = "?";
+            el("controllerLink").href = "#";
+          }
+        } catch (e) {
+          metaState.insecureBase = deriveInsecureBaseFromHost();
+          el("lnkInsecure").href = metaState.insecureBase + "/";
+          el("insecureSrc").textContent = metaState.insecureBase + "/";
+          el("insecureFrame").src = metaState.insecureBase + "/";
+        }
+      }
+
+      // ===== Timeline (trust/rpc) =====
+      const timeline = [];
+      function timelinePush(trusted, rpcOk) {
+        timeline.push({ trusted: !!trusted, rpcOk: !!rpcOk });
+        while (timeline.length > 120) timeline.shift();
+      }
+      function renderTimeline() {
+        const c = el("timeline");
+        const ctx = c.getContext("2d");
+        if (!ctx) return;
+        const w = c.width;
+        const h = c.height;
+
+        ctx.clearRect(0, 0, w, h);
+
+        // background grid
+        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= w; x += 60) {
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, 0);
+          ctx.lineTo(x + 0.5, h);
+          ctx.stroke();
+        }
+
+        const n = timeline.length;
+        if (n === 0) return;
+        const bw = Math.max(1, Math.floor(w / 120));
+        for (let i = 0; i < n; i++) {
+          const x = w - (n - i) * bw;
+          const s = timeline[i];
+          const color = s.trusted ? "rgba(34,197,94,0.95)" : (s.rpcOk ? "rgba(239,68,68,0.95)" : "rgba(245,158,11,0.95)");
+          ctx.fillStyle = color;
+          ctx.fillRect(x, 0, bw - 1, h);
+        }
+      }
+
+      async function refreshHealth() {
+        try {
+          const { json } = await fetchJson("/health");
+          const t = json && json.trust ? json.trust : null;
+          const trusted = t && t.trusted_now === true;
+          const rpcOk = t && t.rpc_ok_now === true;
+
+          el("trustTitle").textContent = trusted ? "Trusted" : "Not trusted";
+          el("enf").textContent = t && typeof t.enforcement === "string" ? t.enforcement : "?";
+          el("rpcOk").textContent = rpcOk ? "true" : (t && t.rpc_ok_now === false ? "false" : "?");
+          el("readAllowed").textContent = t && t.read_allowed === true ? "true" : (t && t.read_allowed === false ? "false" : "?");
+          el("writeAllowed").textContent = t && t.write_allowed === true ? "true" : (t && t.write_allowed === false ? "false" : "?");
+          el("paused").textContent = t && t.paused === true ? "true" : (t && t.paused === false ? "false" : "?");
+
+          const dot = el("dotTrust");
+          dot.className = "dot " + (trusted ? "ok" : "bad");
+
+          timelinePush(trusted, rpcOk);
+          renderTimeline();
+        } catch (e) {
+          el("trustTitle").textContent = "Health fetch failed";
+          el("dotTrust").className = "dot bad";
+        }
+      }
+
+      async function refreshOutbox() {
+        try {
+          const { json } = await fetchJson("/demo/tx-outbox");
+          el("outbox").textContent = JSON.stringify(json, null, 2);
+        } catch (e) {
+          el("outbox").textContent = JSON.stringify({ ok: false, error: "outbox_fetch_failed" }, null, 2);
+        }
+      }
+
+      async function refreshSoak() {
+        try {
+          const { json } = await fetchJson("/demo/soak/latest");
+          el("soak").textContent = JSON.stringify(json, null, 2);
+        } catch (e) {
+          el("soak").textContent = JSON.stringify({ ok: false, error: "soak_fetch_failed" }, null, 2);
+        }
+      }
+
+      // ===== Probes =====
+      async function probeInsecureLeakKey() {
+        const { res, json } = await fetchJson(metaState.insecureBase + "/leak/key");
+        const ok = res.status === 200 && json && json.ok === true && typeof json.key_len === "number" && json.key_len > 0;
+        return { ok, detail: { status: res.status, key_len: json && json.key_len } };
+      }
+      async function probeInsecureLeakDb() {
+        const { res, json } = await fetchJson(metaState.insecureBase + "/leak/db");
+        const db = json && typeof json.db === "object" ? json.db : null;
+        const ok = res.status === 200 && json && json.ok === true && db && typeof db.dsn === "string" && typeof db.user === "string" && typeof db.pass === "string";
+        return { ok, detail: { status: res.status, has_db: !!db } };
+      }
+      async function probeInsecurePdoBypass() {
+        const { res, json } = await fetchJson(metaState.insecureBase + "/bypass/pdo");
+        const ok = res.status === 200 && json && json.ok === true && json.pdo === true;
+        return { ok, detail: { status: res.status } };
+      }
+
+      async function probeSecureDenied(path) {
+        const res = await fetch(path, { cache: "no-store" });
+        const text = await res.text();
+        const ok = res.status === 403;
+        return { ok, detail: { status: res.status, body: text.trim().slice(0, 120) } };
+      }
+      async function probeSecureOk(path, method) {
+        const res = await fetch(path, { cache: "no-store", method: method || "GET" });
+        const text = await res.text();
+        const ok = res.status === 200;
+        return { ok, detail: { status: res.status, body: text.trim().slice(0, 120) } };
+      }
+
+      async function refreshProbes() {
+        setBadge("bInsecureKey", "warn", "checking…");
+        setBadge("bInsecureDbCreds", "warn", "checking…");
+        setBadge("bInsecurePdo", "warn", "checking…");
+        setBadge("bInsecureCrypto", "warn", "checking…");
+        setBadge("bInsecureWrite", "warn", "checking…");
+
+        setBadge("bSecureKey", "warn", "checking…");
+        setBadge("bSecureDbCreds", "warn", "checking…");
+        setBadge("bSecurePdo", "warn", "checking…");
+        setBadge("bSecureCrypto", "warn", "checking…");
+        setBadge("bSecureWrite", "warn", "checking…");
+
+        try {
+          const r = await probeInsecureLeakKey();
+          setBadge("bInsecureKey", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (key readable)" : "Unexpected");
+        } catch (e) {
+          setBadge("bInsecureKey", "bad", "Fetch failed");
+        }
+
+        try {
+          const r = await probeInsecureLeakDb();
+          setBadge("bInsecureDbCreds", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (db creds exposed)" : "Unexpected");
+        } catch (e) {
+          setBadge("bInsecureDbCreds", "bad", "Fetch failed");
+        }
+
+        try {
+          const r = await probeInsecurePdoBypass();
+          setBadge("bInsecurePdo", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (raw PDO ok)" : "Unexpected");
+        } catch (e) {
+          setBadge("bInsecurePdo", "bad", "Fetch failed");
+        }
+
+        try {
+          const r = await probeSecureDenied("/bypass/keys");
+          setBadge("bSecureKey", r.ok ? "ok" : "bad", r.ok ? "Blocked (403)" : "Unexpected");
+        } catch (e) {
+          setBadge("bSecureKey", "bad", "Fetch failed");
+        }
+
+        try {
+          const r = await probeSecureDenied("/bypass/db-creds");
+          setBadge("bSecureDbCreds", r.ok ? "ok" : "bad", r.ok ? "Blocked (403)" : "Unexpected");
+        } catch (e) {
+          setBadge("bSecureDbCreds", "bad", "Fetch failed");
+        }
+
+        try {
+          const r = await probeSecureDenied("/bypass/pdo");
+          setBadge("bSecurePdo", r.ok ? "ok" : "bad", r.ok ? "Blocked (403)" : "Unexpected");
+        } catch (e) {
+          setBadge("bSecurePdo", "bad", "Fetch failed");
+        }
+
+        try {
+          const r = await probeSecureOk("/crypto/roundtrip", "POST");
+          setBadge("bSecureCrypto", r.ok ? "ok" : "bad", r.ok ? "OK (still works)" : "Unexpected");
+        } catch (e) {
+          setBadge("bSecureCrypto", "bad", "Fetch failed");
+        }
+
+        // Insecure crypto + writes are intentionally not implemented; use DB write for control target.
+        try {
+          const { res } = await fetchJson(metaState.insecureBase + "/db/write");
+          setBadge("bInsecureWrite", res.status === 405 ? "warn" : "ok", res.status === 405 ? "Manual (POST required)" : "OK (writes possible)");
+        } catch (e) {
+          setBadge("bInsecureWrite", "warn", "Not tested");
+        }
+
+        try {
+          const r = await probeSecureOk("/db/write", "POST");
+          setBadge("bSecureWrite", r.ok ? "ok" : "warn", r.ok ? "OK (when allowed)" : "Denied (when untrusted)");
+        } catch (e) {
+          setBadge("bSecureWrite", "warn", "Denied/failed");
+        }
+
+        setBadge("bInsecureCrypto", "warn", "See /leak/key (control)");
+      }
+
+      // ===== Guided demo (autopilot) =====
+      async function guidedDemo() {
+        const btn = el("btnAutopilot");
+        btn.disabled = true;
+        try {
+          log("[DEMO] Step 1/6: show unprotected key exfiltration");
+          el("insecureFrame").src = metaState.insecureBase + "/leak/key";
+          await refreshProbes();
+          await new Promise((r) => setTimeout(r, 2500));
+
+          log("[DEMO] Step 2/6: show unprotected DB credential exfiltration");
+          el("insecureFrame").src = metaState.insecureBase + "/leak/db";
+          await refreshProbes();
+          await new Promise((r) => setTimeout(r, 2500));
+
+          log("[DEMO] Step 3/6: show unprotected raw PDO bypass");
+          el("insecureFrame").src = metaState.insecureBase + "/bypass/pdo";
+          await refreshProbes();
+          await new Promise((r) => setTimeout(r, 2500));
+
+          log("[DEMO] Step 4/6: run protected probes (expected: all blocked)");
+          await refreshProbes();
+          await new Promise((r) => setTimeout(r, 1500));
+
+          log("[DEMO] Step 5/6: show protected crypto+db ops (works only when trusted)");
+          await probeSecureOk("/db/read", "GET").then((r) => log("[DEMO] protected /db/read -> " + r.detail.status));
+          await probeSecureOk("/crypto/roundtrip", "POST").then((r) => log("[DEMO] protected /crypto/roundtrip -> " + r.detail.status));
+
+          log("[DEMO] Step 6/6: wait for trust to flip on tamper (watch timeline + outbox)");
+          const waitUntil = Date.now() + 90000;
+          let lastTrusted = null;
+          while (Date.now() < waitUntil) {
+            const { json } = await fetchJson("/health");
+            const t = json && json.trust ? json.trust : null;
+            const trusted = t && t.trusted_now === true;
+            if (lastTrusted !== null && lastTrusted !== trusted) {
+              log("[DEMO] trusted_now changed: " + (lastTrusted ? "true" : "false") + " -> " + (trusted ? "true" : "false"));
+              await refreshOutbox();
+              break;
+            }
+            lastTrusted = trusted;
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+
+          log("[DEMO] Done. Open the technical dashboard for low-level details (/demo/upgrade-info etc).");
+        } catch (e) {
+          log("[DEMO] ERROR: " + (e && e.message ? e.message : String(e)));
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      el("btnRefresh").addEventListener("click", async () => {
+        await refreshMeta();
+        await refreshHealth();
+        await refreshProbes();
+        await refreshOutbox();
+        await refreshSoak();
+        log("[UI] refreshed");
+      });
+      el("btnRefreshOutbox").addEventListener("click", async () => {
+        await refreshOutbox();
+        log("[UI] outbox refreshed");
+      });
+      el("btnRefreshSoak").addEventListener("click", async () => {
+        await refreshSoak();
+        log("[UI] soak refreshed");
+      });
+      el("btnAutopilot").addEventListener("click", guidedDemo);
+
+      el("btnShowLeakKey").addEventListener("click", () => {
+        el("insecureFrame").src = metaState.insecureBase + "/leak/key";
+      });
+      el("btnShowLeakDb").addEventListener("click", () => {
+        el("insecureFrame").src = metaState.insecureBase + "/leak/db";
+      });
+
+      // Boot
+      (async () => {
+        await refreshMeta();
+        await refreshHealth();
+        await refreshProbes();
+        await refreshOutbox();
+        await refreshSoak();
+        setInterval(refreshHealth, 1000);
+        setInterval(refreshOutbox, 2000);
+        setInterval(refreshSoak, 5000);
+      })();
+    </script>
+  </body>
+</html>
+

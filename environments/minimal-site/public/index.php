@@ -16,6 +16,7 @@ use BlackCat\Core\TrustKernel\InstanceControllerReader;
 use BlackCat\Core\TrustKernel\Sha256Merkle;
 use BlackCat\Core\TrustKernel\TrustKernelConfig;
 use BlackCat\Core\TrustKernel\Web3RpcQuorumClient;
+use BlackCat\Testing\Soak\SoakReportGenerator;
 
 require __DIR__ . '/../../vendor/autoload.php';
 
@@ -33,8 +34,11 @@ if (
     || $path === '/health/debug'
     || $path === '/'
     || $path === '/demo'
+    || $path === '/demo/meta'
     || $path === '/demo/wallets'
     || $path === '/demo/tx-outbox'
+    || $path === '/demo/soak/latest'
+    || $path === '/demo/soak/report'
 ) {
     $opts->checkTrustOnRequest = false;
 }
@@ -543,6 +547,79 @@ HttpKernel::run(
         return;
     }
 
+    if ($path === '/demo/meta') {
+        $meta = [
+            'ok' => true,
+            'chain_id' => null,
+            'rpc_endpoints_count' => null,
+            'rpc_quorum' => null,
+            'instance_controller' => null,
+            'explorer_base_url' => null,
+            'insecure_demo_url' => getenv('BLACKCAT_TESTING_INSECURE_URL') ?: 'http://localhost:8089/',
+            'demo' => [
+                'tamper_after_sec' => null,
+                'tamper_kind' => null,
+                'rpc_sabotage_after_sec' => null,
+                'rpc_proxy_sabotage_after_sec' => null,
+            ],
+        ];
+
+        $tamperAfter = getenv('BLACKCAT_TESTING_TAMPER_AFTER_SEC');
+        if (is_string($tamperAfter) && ctype_digit(trim($tamperAfter))) {
+            $meta['demo']['tamper_after_sec'] = (int) trim($tamperAfter);
+        }
+
+        $tamperKind = getenv('BLACKCAT_TESTING_TAMPER_KIND');
+        if (is_string($tamperKind) && trim($tamperKind) !== '') {
+            $meta['demo']['tamper_kind'] = trim($tamperKind);
+        }
+
+        $rpcSabotage = getenv('BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC');
+        if (is_string($rpcSabotage) && ctype_digit(trim($rpcSabotage))) {
+            $meta['demo']['rpc_sabotage_after_sec'] = (int) trim($rpcSabotage);
+        }
+
+        $rpcProxySabotage = getenv('BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC');
+        if (is_string($rpcProxySabotage) && ctype_digit(trim($rpcProxySabotage))) {
+            $meta['demo']['rpc_proxy_sabotage_after_sec'] = (int) trim($rpcProxySabotage);
+        }
+
+        try {
+            $chainId = Config::get('trust.web3.chain_id');
+            if (is_int($chainId)) {
+                $meta['chain_id'] = $chainId;
+            } elseif (is_string($chainId) && ctype_digit(trim($chainId))) {
+                $meta['chain_id'] = (int) trim($chainId);
+            }
+
+            $endpoints = Config::get('trust.web3.rpc_endpoints');
+            if (is_array($endpoints)) {
+                $meta['rpc_endpoints_count'] = count($endpoints);
+            }
+
+            $quorum = Config::get('trust.web3.rpc_quorum');
+            if (is_int($quorum)) {
+                $meta['rpc_quorum'] = $quorum;
+            } elseif (is_string($quorum) && ctype_digit(trim($quorum))) {
+                $meta['rpc_quorum'] = (int) trim($quorum);
+            }
+
+            $controller = Config::get('trust.web3.contracts.instance_controller');
+            if (is_string($controller) && trim($controller) !== '') {
+                $meta['instance_controller'] = trim($controller);
+            }
+
+            if ($meta['chain_id'] === 4207) {
+                $meta['explorer_base_url'] = 'https://edgenscan.io';
+            }
+        } catch (\Throwable) {
+            // best-effort only
+        }
+
+        $sendJson(200, $meta);
+        return;
+    }
+
     if ($path === '/demo/wallets') {
         $file = '/etc/blackcat/demo.wallets.public.json';
 
@@ -672,6 +749,120 @@ HttpKernel::run(
             'error' => $rpcError,
         ]);
         return;
+    }
+
+    if ($path === '/demo/soak/latest') {
+        $logsDir = '/var/lib/blackcat/harness/logs';
+
+        if (!is_dir($logsDir) || is_link($logsDir) || !is_readable($logsDir)) {
+            $sendJson(200, [
+                'ok' => false,
+                'error' => 'logs_dir_unavailable',
+                'hint' => 'Mount blackcat-testing/var/harness/minimal-prod/logs into the app container for presentation mode.',
+            ]);
+            return;
+        }
+
+        $bestMeta = null;
+        $bestMtime = null;
+        $bestRunId = null;
+
+        $files = glob($logsDir . DIRECTORY_SEPARATOR . 'meta.*.json', GLOB_NOSORT);
+        if ($files !== false) {
+            foreach ($files as $path) {
+                if (!is_string($path) || $path === '' || !is_file($path) || is_link($path) || !is_readable($path)) {
+                    continue;
+                }
+                $base = basename($path);
+                if (!preg_match('/^meta\\.(?<id>[A-Za-z0-9_.-]{6,80})\\.json$/', $base, $m)) {
+                    continue;
+                }
+                $mtime = @filemtime($path);
+                if (!is_int($mtime)) {
+                    continue;
+                }
+                if ($bestMtime === null || $mtime >= $bestMtime) {
+                    $bestMtime = $mtime;
+                    $bestMeta = $path;
+                    $bestRunId = $m['id'];
+                }
+            }
+        }
+
+        if (!is_string($bestRunId)) {
+            $sendJson(200, [
+                'ok' => false,
+                'error' => 'no_runs_found',
+            ]);
+            return;
+        }
+
+        $readJson = static function (string $path, int $maxBytes = 262144): ?array {
+            if (trim($path) === '' || str_contains($path, "\0")) {
+                return null;
+            }
+            if (!is_file($path) || is_link($path) || !is_readable($path)) {
+                return null;
+            }
+
+            $raw = @file_get_contents($path, false, null, 0, $maxBytes);
+            if (!is_string($raw) || trim($raw) === '') {
+                return null;
+            }
+
+            /** @var mixed $decoded */
+            $decoded = json_decode($raw, true);
+            if (!is_array($decoded)) {
+                return null;
+            }
+
+            return $decoded;
+        };
+
+        $meta = is_string($bestMeta) ? $readJson($bestMeta) : null;
+        $summary = $readJson($logsDir . DIRECTORY_SEPARATOR . 'summary.' . $bestRunId . '.json');
+
+        $sendJson(200, [
+            'ok' => true,
+            'latest_run_id' => $bestRunId,
+            'meta' => $meta,
+            'summary' => $summary,
+            'report_url' => '/demo/soak/report?run_id=' . urlencode($bestRunId),
+        ]);
+        return;
+    }
+
+    if ($path === '/demo/soak/report') {
+        $logsDir = '/var/lib/blackcat/harness/logs';
+        if (!is_dir($logsDir) || is_link($logsDir) || !is_readable($logsDir)) {
+            $sendText(404, 'soak logs not available');
+            return;
+        }
+
+        $runId = $_GET['run_id'] ?? null;
+        $runId = is_string($runId) ? trim($runId) : null;
+        $runId = $runId === '' ? null : $runId;
+
+        try {
+            $md = SoakReportGenerator::generateMarkdown(
+                $runId,
+                $logsDir,
+                null,
+                '/etc/blackcat/config.runtime.json',
+            );
+            if (!headers_sent()) {
+                http_response_code(200);
+                header('Content-Type: text/markdown; charset=utf-8');
+            }
+            echo $md;
+            if (!str_ends_with($md, "\n")) {
+                echo "\n";
+            }
+            return;
+        } catch (\Throwable $e) {
+            $sendText(500, 'report_failed: ' . $e->getMessage());
+            return;
+        }
     }
 
     if ($path === '/demo/tx-outbox') {

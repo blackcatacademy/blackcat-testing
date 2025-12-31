@@ -2,6 +2,24 @@
 
 declare(strict_types=1);
 
+$cors = static function (): void {
+    if (!headers_sent()) {
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type');
+        header('Access-Control-Max-Age: 86400');
+    }
+};
+
+$cors();
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+    if (!headers_sent()) {
+        http_response_code(204);
+    }
+    exit;
+}
+
 $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
 $path = parse_url((string) $requestUri, PHP_URL_PATH);
 if (!is_string($path) || $path === '') {
@@ -123,6 +141,22 @@ if ($path === '/db/read') {
     }
 }
 
+if ($path === '/bypass/pdo') {
+    try {
+        $pdo = $db(); // intentionally raw PDO (demo only)
+        $pdo->query('SELECT 1');
+        $sendJson(200, [
+            'ok' => true,
+            'pdo' => true,
+            'note' => 'This is intentionally insecure: nothing prevents raw PDO access in the web runtime.',
+        ]);
+        return;
+    } catch (Throwable $e) {
+        $sendJson(500, ['ok' => false, 'pdo' => false, 'error' => $e->getMessage()]);
+        return;
+    }
+}
+
 if ($path === '/db/write') {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         $sendText(405, 'Method Not Allowed');
@@ -206,4 +240,3 @@ echo '<script>
 </script>';
 
 echo '</body></html>';
-
