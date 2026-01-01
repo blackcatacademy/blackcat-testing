@@ -57,7 +57,7 @@
             "dist": {
                 "type": "path",
                 "url": "../blackcat-core",
-                "reference": "9aee418a69d32350d09b6c34988aa043108d406f"
+                "reference": "d4351be1eba2de16ef2dadbb3496369f456eb216"
             },
             "require": {
                 "ext-json": "*",

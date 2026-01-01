@@ -54,7 +54,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $snapshotHex = self::encodeSnapshotHex(
             paused: false,
             activeRoot: $manifestBuild['root'],
-            activeUriHash: $manifestBuild['uri_hash'] ?? ('0x' . str_repeat('00', 32)),
+            activeUriHash: $manifestBuild['uri_hash'],
             activePolicyHash: $cfg->policyHashV3Strict,
         );
 
@@ -117,7 +117,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $snapshotHex = self::encodeSnapshotHex(
             paused: false,
             activeRoot: $manifestBuild['root'],
-            activeUriHash: $manifestBuild['uri_hash'] ?? ('0x' . str_repeat('00', 32)),
+            activeUriHash: $manifestBuild['uri_hash'],
             activePolicyHash: $cfg->policyHashV2Strict,
         );
 
@@ -167,7 +167,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $snapshotHex = self::encodeSnapshotHex(
             paused: false,
             activeRoot: $manifestBuild['root'],
-            activeUriHash: $manifestBuild['uri_hash'] ?? ('0x' . str_repeat('00', 32)),
+            activeUriHash: $manifestBuild['uri_hash'],
             activePolicyHash: $cfg->policyHashV2Strict,
         );
 
@@ -212,7 +212,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $snapshotHex = self::encodeSnapshotHex(
             paused: false,
             activeRoot: $manifestBuild['root'],
-            activeUriHash: $manifestBuild['uri_hash'] ?? ('0x' . str_repeat('00', 32)),
+            activeUriHash: $manifestBuild['uri_hash'],
             activePolicyHash: $cfgV1->policyHashV3Strict,
         );
 
@@ -280,7 +280,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $snapshotHex = self::encodeSnapshotHex(
             paused: false,
             activeRoot: $manifestBuild['root'],
-            activeUriHash: $manifestBuild['uri_hash'] ?? ('0x' . str_repeat('00', 32)),
+            activeUriHash: $manifestBuild['uri_hash'],
             activePolicyHash: $cfg->policyHashV2Strict,
         );
 
@@ -338,7 +338,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $snapshotHex = self::encodeSnapshotHex(
             paused: false,
             activeRoot: $manifestBuild['root'],
-            activeUriHash: $manifestBuild['uri_hash'] ?? ('0x' . str_repeat('00', 32)),
+            activeUriHash: $manifestBuild['uri_hash'],
             activePolicyHash: $cfg->policyHashV2Strict,
         );
 
@@ -397,7 +397,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
         $snapshotHex = self::encodeSnapshotHex(
             paused: true,
             activeRoot: $manifestBuild['root'],
-            activeUriHash: $manifestBuild['uri_hash'] ?? ('0x' . str_repeat('00', 32)),
+            activeUriHash: $manifestBuild['uri_hash'],
             activePolicyHash: $cfg->policyHashV2Warn,
         );
 
