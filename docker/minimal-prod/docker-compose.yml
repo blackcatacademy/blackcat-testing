@@ -25,11 +25,16 @@ services:
       # If you have multiple stable RPC endpoints, override both vars to enable quorum>=2.
       BLACKCAT_TRUST_RPC_ENDPOINTS: "${BLACKCAT_TRUST_RPC_ENDPOINTS:-https://rpc.layeredge.io}"
       BLACKCAT_TRUST_RPC_QUORUM: "${BLACKCAT_TRUST_RPC_QUORUM:-1}"
+      # Runtime enforcement: strict (fail-closed) vs warn (demo-friendly; allows quorum=1).
+      BLACKCAT_TRUST_ENFORCEMENT: "${BLACKCAT_TRUST_ENFORCEMENT:-warn}"
       BLACKCAT_TRUST_MODE: "${BLACKCAT_TRUST_MODE:-full}"
       BLACKCAT_TRUST_MAX_STALE_SEC: "${BLACKCAT_TRUST_MAX_STALE_SEC:-180}"
       BLACKCAT_TRUST_TIMEOUT_SEC: "${BLACKCAT_TRUST_TIMEOUT_SEC:-3}"
       # Default controller for the demo (Edgen). Override to test another instance.
-      BLACKCAT_INSTANCE_CONTROLLER: "${BLACKCAT_INSTANCE_CONTROLLER:-0xae32F6d7BF7C155Cd099BD0Cc0F80048A0275137}"
+      # NOTE: This demo controller is owned by the demo operator EOA and is provisioned for quorum=1 + v3 warn policy.
+      BLACKCAT_INSTANCE_CONTROLLER: "${BLACKCAT_INSTANCE_CONTROLLER:-0x1D8956918DE3D2D58f8B596E4e8e826265cB390A}"
+      # Optional ReleaseRegistry pointer (set to 0x0 for demo instances that disable ReleaseRegistry checks on-chain).
+      BLACKCAT_RELEASE_REGISTRY: "${BLACKCAT_RELEASE_REGISTRY:-0x0000000000000000000000000000000000000000}"
       BLACKCAT_DB_DSN: "${BLACKCAT_DB_DSN:-mysql:host=db;dbname=blackcat_test;charset=utf8mb4}"
       BLACKCAT_DB_USER: "${BLACKCAT_DB_USER:-blackcat}"
       BLACKCAT_DB_PASS: "${BLACKCAT_DB_PASS:-blackcat}"
