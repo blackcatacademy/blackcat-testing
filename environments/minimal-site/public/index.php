@@ -223,7 +223,7 @@ HttpKernel::run(
 	    echo '<p class="muted">This block is safe for presentation (hashes + addresses only). Use it to copy values for Foundry scripts (publish release / set attestation / propose+activate upgrade). See <a href="/demo/upgrade" target="_blank" rel="noopener">Upgrade guide →</a>.</p>';
 	    echo '</div>';
 
-        echo '<div class="card"><div class="row"><button id="btnRead">DB read</button><button id="btnWrite">DB write</button><button id="btnBypass">Probe PDO bypass</button><button id="btnTraffic">Start traffic</button><button id="btnClear">Clear log</button></div>';
+        echo '<div class="card"><div class="row"><button id="btnRefreshHealth">Refresh status</button><button id="btnMonitor">Start live monitor</button><button id="btnRead">DB read</button><button id="btnWrite">DB write</button><button id="btnBypass">Probe PDO bypass</button><button id="btnTraffic">Start traffic</button><button id="btnClear">Clear log</button></div>';
         echo '<pre id="actionsLog">Ready.</pre>';
         echo '<p class="muted">Expected in strict mode: writes denied when <span class="k">write_allowed=false</span>, reads denied when <span class="k">read_allowed=false</span>, and the PDO bypass probe is always denied.</p>';
         echo '</div>';
@@ -484,8 +484,9 @@ HttpKernel::run(
           $("btnBypass").addEventListener("click", () => call("/bypass/pdo", "GET"));
 	          $("btnCrypto").addEventListener("click", () => call("/crypto/roundtrip", "POST"));
 	          $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
-            $("btnDbCredsBypass").addEventListener("click", () => call("/bypass/db-creds", "GET"));
-            $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
+          $("btnDbCredsBypass").addEventListener("click", () => call("/bypass/db-creds", "GET"));
+          $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
+          $("btnRefreshHealth").addEventListener("click", () => refresh(true));
 	            $("btnRefreshWallets").addEventListener("click", () => refreshWallets(true));
 	            $("btnRefreshOutbox").addEventListener("click", () => refreshOutbox(true));
 	            $("btnOpenProtectedStory").addEventListener("click", () => window.open("/protected.html", "_blank", "noopener"));
@@ -537,14 +538,40 @@ HttpKernel::run(
             }, 1000);
           });
 
-	          refresh();
-	            refreshWallets(true);
-	            refreshOutbox(true);
-	            refreshUpgrade(true);
-		          setInterval(() => refresh(false), 5000);
-	            setInterval(() => refreshWallets(false), 15000);
-	            setInterval(() => refreshOutbox(false), 5000);
-	            setInterval(() => refreshUpgrade(false), 60000);
+          let monitoring = false;
+          const timers = [];
+
+          const startMonitoring = () => {
+            if (monitoring) return;
+            monitoring = true;
+            $("btnMonitor").textContent = "Stop live monitor";
+            log("[MONITOR] started");
+
+            refresh(true);
+            refreshWallets(true);
+            refreshOutbox(true);
+            refreshUpgrade(true);
+
+            timers.push(setInterval(() => refresh(false), 5000));
+            timers.push(setInterval(() => refreshWallets(false), 15000));
+            timers.push(setInterval(() => refreshOutbox(false), 5000));
+            timers.push(setInterval(() => refreshUpgrade(false), 60000));
+          };
+
+          const stopMonitoring = () => {
+            if (!monitoring) return;
+            monitoring = false;
+            $("btnMonitor").textContent = "Start live monitor";
+            log("[MONITOR] stopped");
+            while (timers.length) {
+              clearInterval(timers.pop());
+            }
+          };
+
+          $("btnMonitor").addEventListener("click", () => {
+            if (monitoring) stopMonitoring();
+            else startMonitoring();
+          });
 		        </script>';
 
         echo '</body></html>';
