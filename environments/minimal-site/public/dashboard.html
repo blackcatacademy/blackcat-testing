@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>BlackCat Demo — Technical Dashboard</title>
+    <meta
+      name="description"
+      content="Technical dashboard for the BlackCat minimal demo: cached health, tx-outbox status, and optional live on-chain upgrade info."
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg0: #070a10;
+        --bg1: #0a1222;
+        --card: rgba(255, 255, 255, 0.04);
+        --b: rgba(255, 255, 255, 0.12);
+        --t: rgba(255, 255, 255, 0.92);
+        --m: rgba(255, 255, 255, 0.65);
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        --ok: #22c55e;
+        --bad: #ef4444;
+        --warn: #f59e0b;
+        --accent: #60a5fa;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        color: var(--t);
+        background:
+          radial-gradient(1200px 600px at 20% 10%, rgba(96, 165, 250, 0.15), transparent 65%),
+          radial-gradient(900px 500px at 80% 20%, rgba(34, 197, 94, 0.10), transparent 60%),
+          linear-gradient(180deg, var(--bg1), var(--bg0));
+      }
+
+      header {
+        border-bottom: 1px solid var(--b);
+        background: rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 18px;
+      }
+
+      .hero {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+
+      .hero h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+        letter-spacing: -0.02em;
+      }
+
+      .hero p {
+        margin: 0;
+        color: var(--m);
+        max-width: 860px;
+        line-height: 1.5;
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        padding: 7px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--b);
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 12px;
+        color: var(--m);
+      }
+      .pill strong {
+        color: var(--t);
+      }
+
+      button {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--b);
+        color: var(--t);
+        padding: 10px 12px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:hover {
+        border-color: rgba(96, 165, 250, 0.55);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .btnPrimary {
+        background: linear-gradient(180deg, rgba(96, 165, 250, 0.25), rgba(96, 165, 250, 0.10));
+        border-color: rgba(96, 165, 250, 0.55);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .card {
+        grid-column: span 12;
+        background: var(--card);
+        border: 1px solid var(--b);
+        border-radius: 16px;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      @media (min-width: 980px) {
+        .half {
+          grid-column: span 6;
+        }
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+      }
+
+      pre {
+        margin: 12px 0 0;
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        overflow: auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.45;
+        color: rgba(255, 255, 255, 0.86);
+        max-height: 320px;
+      }
+
+      .muted {
+        color: var(--m);
+        font-size: 12px;
+        line-height: 1.45;
+        margin-top: 8px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--warn);
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+      }
+      .dot.ok {
+        background: var(--ok);
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+      }
+      .dot.bad {
+        background: var(--bad);
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <div class="hero">
+          <div>
+            <h1>BlackCat Demo — Technical Dashboard</h1>
+            <p>
+              Fast, cached view for the demo stack. This page avoids heavy on-chain calls on load (PHP built-in server is single-threaded).
+              Use the <strong>Live</strong> button only when you want to hit the chain.
+            </p>
+            <p class="muted">
+              <a href="/presentation.html">← Back to investor demo</a> · <a href="/protected.html">Protected story</a> ·
+              <a href="http://localhost:8089/start" target="_blank" rel="noopener">Unprotected attack demo</a>
+            </p>
+          </div>
+          <div class="row">
+            <button class="btnPrimary" id="btnRefresh">Refresh (cached)</button>
+            <button id="btnLive">Load upgrade info (live chain)</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="grid">
+        <div class="card half">
+          <div class="row" style="justify-content: space-between">
+            <div class="row">
+              <span id="dotTrust" class="dot"></span>
+              <span class="pill"><strong id="trustTitle">Loading…</strong></span>
+              <span class="pill">rpc_ok: <strong id="rpcOk">?</strong></span>
+              <span class="pill">read_allowed: <strong id="readAllowed">?</strong></span>
+              <span class="pill">write_allowed: <strong id="writeAllowed">?</strong></span>
+            </div>
+          </div>
+          <div class="muted">Source: <span style="font-family: var(--mono)">/health</span> (trust-runner cache)</div>
+          <pre id="health">Loading…</pre>
+        </div>
+
+        <div class="card half">
+          <h2>Meta</h2>
+          <div class="muted">Source: <span style="font-family: var(--mono)">/demo/meta</span> (runtime config)</div>
+          <pre id="meta">Loading…</pre>
+        </div>
+
+        <div class="card half">
+          <h2>Tx Outbox</h2>
+          <div class="muted">Source: <span style="font-family: var(--mono)">/demo/tx-outbox</span> (filesystem summary)</div>
+          <pre id="outbox">Loading…</pre>
+        </div>
+
+        <div class="card half">
+          <h2>Upgrade Info (live chain)</h2>
+          <div class="muted">
+            Source: <span style="font-family: var(--mono)">/demo/upgrade-info</span> (can be slow / rate-limited). This is intentionally
+            not auto-loaded.
+          </div>
+          <pre id="upgrade">{ "note": "Click 'Load upgrade info (live chain)'." }</pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const el = (id) => document.getElementById(id);
+
+      async function fetchJson(url, timeoutMs) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs || 2500);
+        let res;
+        let text = "";
+        try {
+          res = await fetch(url, { cache: "no-store", signal: controller.signal });
+          text = await res.text();
+        } finally {
+          window.clearTimeout(timer);
+        }
+        let json;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          throw new Error("invalid json from " + url + ": " + text.slice(0, 120));
+        }
+        return { res, json };
+      }
+
+      async function refreshCached() {
+        const healthEl = el("health");
+        const metaEl = el("meta");
+        const outboxEl = el("outbox");
+
+        try {
+          const { json } = await fetchJson("/health");
+          healthEl.textContent = JSON.stringify(json, null, 2);
+          const t = json && json.trust ? json.trust : null;
+          const trusted = t && t.trusted_now === true;
+          const rpcOk = t && t.rpc_ok_now === true;
+          el("trustTitle").textContent = trusted ? "Trusted" : "Not trusted";
+          el("dotTrust").className = "dot " + (trusted ? "ok" : "bad");
+          el("rpcOk").textContent = rpcOk ? "true" : (t && t.rpc_ok_now === false ? "false" : "?");
+          el("readAllowed").textContent = t && t.read_allowed === true ? "true" : (t && t.read_allowed === false ? "false" : "?");
+          el("writeAllowed").textContent = t && t.write_allowed === true ? "true" : (t && t.write_allowed === false ? "false" : "?");
+        } catch (e) {
+          healthEl.textContent = JSON.stringify({ ok: false, error: String(e) }, null, 2);
+          el("trustTitle").textContent = "Health fetch failed";
+          el("dotTrust").className = "dot bad";
+        }
+
+        try {
+          const { json } = await fetchJson("/demo/meta");
+          metaEl.textContent = JSON.stringify(json, null, 2);
+        } catch (e) {
+          metaEl.textContent = JSON.stringify({ ok: false, error: String(e) }, null, 2);
+        }
+
+        try {
+          const { json } = await fetchJson("/demo/tx-outbox");
+          outboxEl.textContent = JSON.stringify(json, null, 2);
+        } catch (e) {
+          outboxEl.textContent = JSON.stringify({ ok: false, error: String(e) }, null, 2);
+        }
+      }
+
+      async function loadUpgradeInfoLive() {
+        const btn = el("btnLive");
+        const out = el("upgrade");
+        btn.disabled = true;
+        out.textContent = JSON.stringify({ loading: true, note: "This can take a few seconds (live chain call)." }, null, 2);
+        try {
+          const { json } = await fetchJson("/demo/upgrade-info", 12000);
+          out.textContent = JSON.stringify(json, null, 2);
+        } catch (e) {
+          out.textContent = JSON.stringify({ ok: false, error: String(e) }, null, 2);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      el("btnRefresh").addEventListener("click", refreshCached);
+      el("btnLive").addEventListener("click", loadUpgradeInfoLive);
+
+      (async () => {
+        await refreshCached();
+        window.setInterval(refreshCached, 2000);
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
+            refreshCached();
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>
+

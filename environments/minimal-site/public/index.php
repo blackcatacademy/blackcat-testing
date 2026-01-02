@@ -47,6 +47,16 @@ if ($path === '/' || $path === '/demo') {
     exit;
 }
 
+// Convenience redirect: technical dashboard.
+if ($path === '/dashboard') {
+    if (!headers_sent()) {
+        http_response_code(302);
+        header('Location: /dashboard.html');
+        header('Cache-Control: no-store');
+    }
+    exit;
+}
+
 // Fast cached endpoints (avoid booting TrustKernel in the HTTP request).
 if ($path === '/health') {
     require __DIR__ . '/health_cached.php';
