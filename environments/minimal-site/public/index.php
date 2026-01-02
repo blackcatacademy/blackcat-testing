@@ -34,14 +34,16 @@ if (
     || $path === '/health/debug'
     || $path === '/'
     || $path === '/demo'
-    || $path === '/demo/meta'
-    || $path === '/demo/wallets'
-    || $path === '/demo/tx-outbox'
-    || $path === '/demo/upgrade-info'
-    || $path === '/demo/soak/latest'
-    || $path === '/demo/soak/report'
+	|| $path === '/demo/meta'
+	|| $path === '/demo/wallets'
+	|| $path === '/demo/tx-outbox'
+	|| $path === '/demo/upgrade'
+	|| $path === '/demo/protected'
+	|| $path === '/demo/upgrade-info'
+	|| $path === '/demo/soak/latest'
+	|| $path === '/demo/soak/report'
 ) {
-    $opts->checkTrustOnRequest = false;
+	$opts->checkTrustOnRequest = false;
 }
 
 $sendJson = static function (int $status, array $payload): void {
@@ -213,13 +215,13 @@ HttpKernel::run(
         echo '<p class="muted">The runner and secrets-agent write anonymized <span class="k">signature requests</span> (<span class="k">sig.*.json</span>) + optional tx intents (<span class="k">tx.*.json</span>) into this outbox. A signer+relayer can broadcast them to the chain (optional).</p>';
         echo '</div>';
 
-        echo '<div class="card"><div class="row" style="justify-content:space-between">';
-        echo '<div class="row"><span class="pill"><strong>On-chain upgrade info</strong></span><span class="pill">hashes only</span></div>';
-        echo '<div class="row"><button id="btnRefreshUpgrade">Refresh</button></div>';
-        echo '</div>';
-        echo '<pre id="upgradeBox">{"loading":true}</pre>';
-        echo '<p class="muted">This block is safe for presentation (hashes + addresses only). Use it to copy values for Foundry scripts (publish release / set attestation / propose+activate upgrade).</p>';
-        echo '</div>';
+	    echo '<div class="card"><div class="row" style="justify-content:space-between">';
+	    echo '<div class="row"><span class="pill"><strong>On-chain upgrade info</strong></span><span class="pill">hashes only</span></div>';
+	    echo '<div class="row"><button id="btnOpenProtectedStory">Protected story</button><button id="btnOpenUpgradeGuide">Upgrade guide</button><button id="btnRefreshUpgrade">Refresh</button></div>';
+	    echo '</div>';
+	    echo '<pre id="upgradeBox">{"loading":true}</pre>';
+	    echo '<p class="muted">This block is safe for presentation (hashes + addresses only). Use it to copy values for Foundry scripts (publish release / set attestation / propose+activate upgrade). See <a href="/demo/upgrade" target="_blank" rel="noopener">Upgrade guide →</a>.</p>';
+	    echo '</div>';
 
         echo '<div class="card"><div class="row"><button id="btnRead">DB read</button><button id="btnWrite">DB write</button><button id="btnBypass">Probe PDO bypass</button><button id="btnTraffic">Start traffic</button><button id="btnClear">Clear log</button></div>';
         echo '<pre id="actionsLog">Ready.</pre>';
@@ -233,10 +235,10 @@ HttpKernel::run(
         echo '<div class="card">';
         echo '<div class="row" style="justify-content:space-between">';
         echo '<div class="row"><span class="pill"><strong>Guided comparison</strong></span><span class="pill">secure vs unprotected</span></div>';
-        echo '<div class="row"><button id="btnOpenInsecureHome">Open unprotected</button><button id="btnOpenInsecureLeakKey">Unprotected: leak key</button><button id="btnOpenInsecureLeakDb">Unprotected: leak DB creds</button><button id="btnOpenInsecureRead">Unprotected: DB read</button></div>';
+        echo '<div class="row"><button id="btnOpenProtectedStory2">Protected story</button><button id="btnOpenInsecureHome">Open unprotected</button><button id="btnOpenInsecureStart">Unprotected: start attack demo</button><button id="btnOpenInsecureLeakKey">Unprotected: leak key</button><button id="btnOpenInsecureLeakDb">Unprotected: leak DB creds</button><button id="btnOpenInsecureRead">Unprotected: DB read</button></div>';
         echo '</div>';
         echo '<p class="muted" style="margin-top:10px">';
-        echo 'Suggested demo flow: (1) open the unprotected site and click leak endpoints, (2) run the protected probes above (key/db/agent), (3) wait for a tamper event and observe the kernel fail-closed.';
+        echo 'Suggested demo flow: (1) run the unprotected <span class="k">/start</span> attack demo, (2) run the protected probes above (key/db/agent), (3) wait for a tamper event and observe the kernel fail-closed.';
         echo '</p>';
         echo '</div>';
 
@@ -374,12 +376,13 @@ HttpKernel::run(
               upgradeInFlight = true;
               lastUpgradeAt = now;
 
-	              try {
-	                const res = await fetch("/demo/upgrade-info", {cache:"no-store"});
-	                const text = await res.text();
-	                $("upgradeBox").textContent = text.trim() !== "" ? text : "{}";
-	              } catch (e) {
-	                $("upgradeBox").textContent = "[upgrade] fetch failed";
+		              try {
+		                const url = force ? "/demo/upgrade-info?force=1" : "/demo/upgrade-info";
+		                const res = await fetch(url, {cache:"no-store"});
+		                const text = await res.text();
+		                $("upgradeBox").textContent = text.trim() !== "" ? text : "{}";
+		              } catch (e) {
+		                $("upgradeBox").textContent = "[upgrade] fetch failed";
 	              } finally {
 	                upgradeInFlight = false;
 	              }
@@ -474,10 +477,12 @@ HttpKernel::run(
 	          $("btnKeyBypass").addEventListener("click", () => call("/bypass/keys", "GET"));
             $("btnDbCredsBypass").addEventListener("click", () => call("/bypass/db-creds", "GET"));
             $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
-            $("btnRefreshWallets").addEventListener("click", () => refreshWallets(true));
-            $("btnRefreshOutbox").addEventListener("click", () => refreshOutbox(true));
-            $("btnRefreshUpgrade").addEventListener("click", () => refreshUpgrade(true));
-	          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
+	            $("btnRefreshWallets").addEventListener("click", () => refreshWallets(true));
+	            $("btnRefreshOutbox").addEventListener("click", () => refreshOutbox(true));
+	            $("btnOpenProtectedStory").addEventListener("click", () => window.open("/demo/protected", "_blank", "noopener"));
+	            $("btnOpenUpgradeGuide").addEventListener("click", () => window.open("/demo/upgrade", "_blank", "noopener"));
+	            $("btnRefreshUpgrade").addEventListener("click", () => refreshUpgrade(true));
+		          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
 
           const insecureBase = insecureUrl.replace(/\\/+$/, "");
           const openInsecure = (path) => {
@@ -487,9 +492,11 @@ HttpKernel::run(
           };
 
           $("btnOpenInsecureHome").addEventListener("click", () => openInsecure("/"));
+          $("btnOpenInsecureStart").addEventListener("click", () => openInsecure("/start"));
           $("btnOpenInsecureLeakKey").addEventListener("click", () => openInsecure("/leak/key"));
           $("btnOpenInsecureLeakDb").addEventListener("click", () => openInsecure("/leak/db"));
           $("btnOpenInsecureRead").addEventListener("click", () => openInsecure("/db/read"));
+          $("btnOpenProtectedStory2").addEventListener("click", () => window.open("/demo/protected", "_blank", "noopener"));
 
           $("btnTraffic").addEventListener("click", () => {
             if (trafficTimer) {
@@ -522,14 +529,14 @@ HttpKernel::run(
           });
 
 	          refresh();
-            refreshWallets(true);
-            refreshOutbox(true);
-            refreshUpgrade(true);
-	          setInterval(refresh, 1000);
-            setInterval(() => refreshWallets(false), 5000);
-            setInterval(() => refreshOutbox(false), 2000);
-            setInterval(() => refreshUpgrade(false), 10000);
-	        </script>';
+	            refreshWallets(true);
+	            refreshOutbox(true);
+	            refreshUpgrade(true);
+		          setInterval(refresh, 1000);
+	            setInterval(() => refreshWallets(false), 5000);
+	            setInterval(() => refreshOutbox(false), 2000);
+	            setInterval(() => refreshUpgrade(false), 30000);
+		        </script>';
 
         echo '</body></html>';
         return;
@@ -628,6 +635,323 @@ HttpKernel::run(
         }
 
         $sendJson(200, $meta);
+        return;
+    }
+
+    if ($path === '/demo/upgrade') {
+        if (!headers_sent()) {
+            http_response_code(200);
+            header('Content-Type: text/html; charset=utf-8');
+        }
+
+        $repoUrl = 'https://github.com/blackcatacademy/blackcat-testing';
+        $runbookUrl = $repoUrl . '/blob/main/docs/EDGEN_EXISTING_INSTANCE_UPGRADE.md';
+
+        echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+        echo '<title>BlackCat Upgrade Guide</title>';
+        echo '<style>
+          :root{color-scheme:dark;--bg:#0b1020;--card:#121a33;--muted:#95a3c3;--b:#1f2a4f;--mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+          body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:var(--bg);color:#e8eeff}
+          header{padding:24px 20px;border-bottom:1px solid var(--b);background:linear-gradient(180deg,rgba(255,255,255,.04),transparent)}
+          h1{margin:0 0 6px;font-size:18px}
+          p{margin:0;color:var(--muted);font-size:13px}
+          .wrap{max-width:980px;margin:0 auto;padding:18px 20px}
+          .card{background:var(--card);border:1px solid var(--b);border-radius:12px;padding:14px}
+          .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+          button{appearance:none;border:1px solid var(--b);background:#0f1730;color:#e8eeff;border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer}
+          button:hover{border-color:#2a3a6f}
+          pre{margin:10px 0 0;background:#0a1126;border:1px solid var(--b);border-radius:10px;padding:10px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.45}
+          a{color:#cfe0ff;text-decoration:none}
+          a:hover{text-decoration:underline}
+          .muted{color:var(--muted);font-size:12px}
+          .k{font-family:var(--mono);font-size:12px;color:#cfe0ff}
+        </style></head><body>';
+
+        echo '<header><div class="wrap"><h1>Upgrade guide (Edgen)</h1><p>Read-only helpers for presenting BlackCat upgrade flows.</p><p class="muted" style="margin-top:8px"><a href="/" rel="noopener">← Back to demo</a> · <a href="' . htmlspecialchars($runbookUrl, ENT_QUOTES) . '" target="_blank" rel="noopener">Open full runbook on GitHub →</a></p></div></header>';
+
+        echo '<div class="wrap">';
+        echo '<div class="card">';
+        echo '<div class="row" style="justify-content:space-between">';
+        echo '<div class="row"><strong>Live upgrade info</strong><span class="muted">(/demo/upgrade-info)</span></div>';
+        echo '<div class="row"><button id="btnRefresh">Refresh</button></div>';
+        echo '</div>';
+        echo '<pre id="box">{"loading":true}</pre>';
+        echo '<p class="muted" style="margin-top:10px">If an RPC endpoint is rate-limited (e.g. 429), the demo may show <span class="k">degraded_rpc=true</span> and continue with quorum=1 for this read-only view. Runtime enforcement still uses your configured quorum.</p>';
+        echo '</div>';
+
+        echo '<div class="card" style="margin-top:12px">';
+        echo '<strong>What to show in a presentation</strong>';
+        echo '<pre>';
+        echo "1) Show current on-chain state (active_root / policy_hash / paused)\\n";
+        echo "2) Show runtime-config attestation key/value (and locked=true)\\n";
+        echo "3) Propose+activate upgrade (Foundry runbook)\\n";
+        echo "4) Re-open the main demo page and show the kernel staying strict after upgrade\\n";
+        echo '</pre>';
+        echo '</div>';
+
+        echo '</div>';
+
+        echo '<script>
+          const box = document.getElementById("box");
+          const btn = document.getElementById("btnRefresh");
+          const load = async (force) => {
+            btn.disabled = true;
+            try {
+              const url = force ? "/demo/upgrade-info?force=1" : "/demo/upgrade-info";
+              const res = await fetch(url, {cache:"no-store"});
+              const json = await res.json();
+              box.textContent = JSON.stringify(json, null, 2);
+            } catch (e) {
+              box.textContent = JSON.stringify({ok:false,error:String(e)}, null, 2);
+            } finally {
+              btn.disabled = false;
+            }
+          };
+          btn.addEventListener("click", () => load(true));
+          load(false);
+        </script>';
+
+        echo '</body></html>';
+        return;
+    }
+
+    if ($path === '/demo/protected') {
+        if (!headers_sent()) {
+            http_response_code(200);
+            header('Content-Type: text/html; charset=utf-8');
+            header('Cache-Control: no-store');
+        }
+
+        $insecureUrl = getenv('BLACKCAT_TESTING_INSECURE_URL') ?: 'http://localhost:8089/';
+        if (!is_string($insecureUrl) || trim($insecureUrl) === '') {
+            $insecureUrl = 'http://localhost:8089/';
+        }
+        $insecureUrl = rtrim(trim($insecureUrl), "/") . "/";
+
+        echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+        echo '<title>Protected Story (BlackCat)</title>';
+        echo '<style>
+          :root{color-scheme:dark;--bg:#07110a;--card:#0c1f12;--muted:#a6d6b8;--ok:#37d67a;--bad:#ff5c5c;--warn:#ffb84d;--b:#163423;--mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+          body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:radial-gradient(1000px 600px at 20% -10%, rgba(55,214,122,.18), transparent 60%), var(--bg);color:#e8fff1}
+          header{padding:22px 20px;border-bottom:1px solid var(--b);background:linear-gradient(180deg,rgba(255,255,255,.04),transparent)}
+          .wrap{max-width:1200px;margin:0 auto;padding:18px 20px}
+          .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+          .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+          .card{grid-column:span 12;background:rgba(12,31,18,.92);border:1px solid var(--b);border-radius:14px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+          .logo{width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(0,0,0,.35))}
+          h1{margin:0 0 4px;font-size:18px;letter-spacing:.2px}
+          h2{margin:0;font-size:14px}
+          p{margin:0;color:var(--muted);font-size:13px}
+          a{color:#c6ffe0;text-decoration:none}
+          a:hover{text-decoration:underline}
+          button{appearance:none;border:1px solid var(--b);background:#0a1b10;color:#e8fff1;border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer}
+          button:hover{border-color:#2a6f44}
+          pre{margin:12px 0 0;background:#06160d;border:1px solid var(--b);border-radius:12px;padding:12px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.45;max-height:420px}
+          .pill{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;background:#06160d;border:1px solid var(--b);font-size:12px}
+          .pill.ok{border-color:rgba(55,214,122,.55);color:#d8ffea}
+          .pill.bad{border-color:rgba(255,92,92,.55);color:#ffd7d7}
+          .pill.warn{border-color:rgba(255,184,77,.6);color:#ffe7c0}
+          .muted{color:var(--muted);font-size:12px}
+          .k{font-family:var(--mono);font-size:12px;color:#c6ffe0}
+          .steps{display:grid;grid-template-columns:repeat(12,1fr);gap:10px}
+          .step{grid-column:span 12;background:#06160d;border:1px dashed var(--b);border-radius:14px;padding:10px}
+          .step.active{border-color:#2a6f44;box-shadow:0 0 0 2px rgba(55,214,122,.12) inset}
+          .step.done{border-style:solid;border-color:rgba(55,214,122,.4)}
+          .step.fail{border-style:solid;border-color:rgba(255,92,92,.5)}
+          .tag{font-family:var(--mono);font-size:11px;border:1px solid var(--b);border-radius:8px;padding:4px 8px;background:#06160d;color:#c6ffe0}
+          @media(min-width:900px){.col6{grid-column:span 6}.col7{grid-column:span 7}.col5{grid-column:span 5}}
+        </style></head><body>';
+
+        echo '<header><div class="wrap"><div class="row" style="justify-content:space-between">';
+        echo '<div class="row"><img class="logo" src="/assets/protected.png" alt="Protected"><div>';
+        echo '<h1>Protected Story (BlackCat)</h1>';
+        echo '<p>Same attacker mindset. Same target stack. Different result: <span class="k">DENIED</span>.</p>';
+        echo '<p class="muted" style="margin-top:6px"><a href="/" rel="noopener">← Back to demo</a> · <a href="' . htmlspecialchars($insecureUrl, ENT_QUOTES) . 'start" target="_blank" rel="noopener">Open unprotected attack demo →</a></p>';
+        echo '</div></div>';
+        echo '<div class="row">';
+        echo '<span class="pill ok">TrustKernel</span>';
+        echo '<span class="pill ok">Fail-closed</span>';
+        echo '<span class="pill ok">Secrets boundary</span>';
+        echo '<span class="pill ok">Host allowlist</span>';
+        echo '</div>';
+        echo '</div></div></header>';
+
+        echo '<div class="wrap"><div class="grid">';
+
+        echo '<div class="card col6"><div class="row" style="justify-content:space-between"><div><h2>Defense timeline (auto)</h2><div class="muted">This page runs safe, read-only probes and shows what gets blocked.</div></div><div class="row"><button id="btnRun">Run</button><button id="btnRefresh">Refresh state</button></div></div><pre id="console">Ready.</pre></div>';
+
+        echo '<div class="card col6"><div class="row" style="justify-content:space-between"><div><h2>Kernel state</h2><div class="muted">From <span class="k">/health</span> (safe summary).</div></div><div class="row"><span class="tag">chain_id: <span id="chainId">?</span></span><span class="tag">rpc_quorum: <span id="rpcQuorum">?</span></span></div></div><pre id="healthBox">{"loading":true}</pre></div>';
+
+        echo '<div class="card"><div class="row" style="justify-content:space-between"><div><h2>Attack attempts</h2><div class="muted">The attacker tries common exfil/bypass paths. The kernel forces <span class="k">DENY</span> (and can emit incidents).</div></div><div class="row"><a class="pill" href="/demo/tx-outbox" target="_blank" rel="noopener">Tx outbox →</a><a class="pill" href="/demo/upgrade-info" target="_blank" rel="noopener">Upgrade info →</a></div></div><div class="steps" id="steps"></div></div>';
+
+        echo '</div></div>';
+
+        echo '<script>
+          const consoleEl = document.getElementById("console");
+          const healthBox = document.getElementById("healthBox");
+          const stepsEl = document.getElementById("steps");
+          const log = (msg) => { consoleEl.textContent = (new Date().toISOString()) + " " + msg + "\\n" + consoleEl.textContent; };
+
+          async function call(path, method="GET") {
+            const res = await fetch(path, {method, cache:"no-store"});
+            const text = await res.text();
+            let json = null;
+            try { json = JSON.parse(text); } catch {}
+            return { ok: res.ok, status: res.status, text, json };
+          }
+
+          async function refreshHealth() {
+            try {
+              const r = await call("/health");
+              healthBox.textContent = JSON.stringify(r.json ?? {status:r.status, text:r.text}, null, 2);
+              try {
+                const m = await call("/demo/meta");
+                document.getElementById("chainId").textContent = m.json?.chain_id ?? "?";
+                document.getElementById("rpcQuorum").textContent = m.json?.rpc_quorum ?? "?";
+              } catch {}
+            } catch (e) {
+              healthBox.textContent = JSON.stringify({ok:false,error:String(e)}, null, 2);
+            }
+          }
+
+          function addStep(title, expected, withBlackCat) {
+            const el = document.createElement("div");
+            el.className = "step";
+            el.innerHTML = `
+              <div class="row" style="justify-content:space-between">
+                <div><strong>${title}</strong></div>
+                <div class="muted">${expected}</div>
+              </div>
+              <div class="muted" style="margin-top:6px"><strong>With BlackCat:</strong> ${withBlackCat}</div>
+              <pre class="out" style="display:none"></pre>
+            `;
+            stepsEl.appendChild(el);
+            return el;
+          }
+
+          const steps = [];
+
+          steps.push({
+            el: addStep(
+              "1) Attempt raw PDO access",
+              "Expected: DENIED",
+              "The DB wrapper refuses to expose raw PDO (prevents bypassing guards)."
+            ),
+            run: async () => call("/bypass/pdo")
+          });
+
+          steps.push({
+            el: addStep(
+              "2) Attempt direct key file read",
+              "Expected: DENIED",
+              "Key material must not be readable by the web runtime (secrets boundary)."
+            ),
+            run: async () => call("/bypass/keys")
+          });
+
+          steps.push({
+            el: addStep(
+              "3) Attempt DB credentials file read",
+              "Expected: DENIED",
+              "DB DSN/user/pass are not exposed to the web runtime."
+            ),
+            run: async () => call("/bypass/db-creds")
+          });
+
+          steps.push({
+            el: addStep(
+              "4) Attempt to talk to secrets-agent",
+              "Expected: DENIED",
+              "Agent enforces TrustKernel and blocks key export (keyless mode)."
+            ),
+            run: async () => call("/bypass/agent")
+          });
+
+          steps.push({
+            el: addStep(
+              "5) Legit DB read (allowed only when trust allows reads)",
+              "Expected: OK or DENIED (fail-closed)",
+              "If integrity/policy diverges, reads are blocked (or reduced to read-only depending on policy)."
+            ),
+            run: async () => call("/db/read")
+          });
+
+          steps.push({
+            el: addStep(
+              "6) Legit DB write (allowed only when trust allows writes)",
+              "Expected: OK or DENIED (fail-closed)",
+              "Writes are blocked immediately when trust flips (tamper → fail-closed)."
+            ),
+            run: async () => call("/db/write", "POST")
+          });
+
+          steps.push({
+            el: addStep(
+              "7) Crypto roundtrip (keyless agent)",
+              "Expected: OK or DENIED (policy-dependent)",
+              "Crypto ops can be delegated to the agent without exporting keys."
+            ),
+            run: async () => call("/crypto/roundtrip", "POST")
+          });
+
+          async function runAll() {
+            stepsEl.innerHTML = "";
+            const prepared = steps.map(s => ({...s, el: s.el})); // keep ordering
+            // Re-create DOM nodes so repeated runs look clean.
+            const defs = prepared.map(d => ({
+              title: d.el.querySelector("strong").textContent,
+              expected: d.el.querySelectorAll(".muted")[0]?.textContent ?? "",
+              withBlackCat: d.el.querySelectorAll(".muted")[1]?.textContent ?? ""
+            }));
+            steps.length = 0;
+            for (const d of defs) {
+              // Parse the label out of the existing node text.
+              steps.push({ el: addStep(d.title, d.expected, d.withBlackCat.replace(/^With BlackCat:\\s*/,"")) });
+            }
+
+            await refreshHealth();
+            log("Starting protected story...");
+
+            const runners = [
+              () => call("/bypass/pdo"),
+              () => call("/bypass/keys"),
+              () => call("/bypass/db-creds"),
+              () => call("/bypass/agent"),
+              () => call("/db/read"),
+              () => call("/db/write","POST"),
+              () => call("/crypto/roundtrip","POST"),
+            ];
+
+            for (let i=0;i<steps.length;i++) {
+              const el = steps[i].el;
+              steps.forEach(x => x.el.classList.remove("active"));
+              el.classList.add("active");
+              log(`Step ${i+1}/${steps.length}: ${el.querySelector("strong").textContent}`);
+              let r;
+              try { r = await runners[i](); } catch (e) { r = {ok:false,status:0,text:String(e),json:null}; }
+              const pre = el.querySelector("pre.out");
+              pre.style.display = "block";
+              pre.textContent = (r.json ? JSON.stringify(r.json, null, 2) : String(r.text).trim());
+              const okDenied = (r.status === 403 && (String(r.text).trim() === "denied" || String(r.text).includes("denied")));
+              const okExpected =
+                (i <= 3 && okDenied) ||
+                (i >= 4 && (r.status === 200 || r.status === 403));
+              el.classList.remove("active");
+              el.classList.add(okExpected ? "done" : "fail");
+              await new Promise(r2 => setTimeout(r2, 650));
+            }
+
+            await refreshHealth();
+            log("Finished. Compare with the unprotected /start page to see exfiltration happen.");
+          }
+
+          document.getElementById("btnRun").addEventListener("click", runAll);
+          document.getElementById("btnRefresh").addEventListener("click", refreshHealth);
+          refreshHealth();
+          runAll();
+        </script>';
+
+        echo '</body></html>';
         return;
     }
 
@@ -1135,12 +1459,58 @@ HttpKernel::run(
         return;
     }
 
-    if ($path === '/demo/upgrade-info') {
-        try {
-            $repo = Config::repo();
-            $tk = TrustKernelConfig::fromRuntimeConfig(new BlackCatConfigRepositoryAdapter($repo));
-            if ($tk === null) {
-                $sendJson(500, ['ok' => false, 'error' => 'trust.web3 not configured']);
+	    if ($path === '/demo/upgrade-info') {
+	        $force = (isset($_GET['force']) && is_string($_GET['force']) && trim($_GET['force']) === '1');
+
+	        $cacheDir = '/var/lib/blackcat/tx-outbox';
+	        $cachePath = $cacheDir . '/upgrade-info.cache.json';
+	        $cacheTtlSec = 60;
+
+	        $readCache = static function () use ($cachePath): ?array {
+	            try {
+	                if (!is_file($cachePath) || is_link($cachePath) || !is_readable($cachePath)) {
+	                    return null;
+	                }
+	                $raw = @file_get_contents($cachePath, false, null, 0, 1024 * 1024);
+	                if (!is_string($raw) || trim($raw) === '') {
+	                    return null;
+	                }
+	                /** @var mixed $decoded */
+	                $decoded = json_decode($raw, true);
+	                return is_array($decoded) ? $decoded : null;
+	            } catch (\Throwable) {
+	                return null;
+	            }
+	        };
+
+	        if (!$force) {
+	            try {
+	                if (is_file($cachePath) && !is_link($cachePath)) {
+	                    clearstatcache(true, $cachePath);
+	                    $mtime = @filemtime($cachePath);
+	                    if (is_int($mtime) && (time() - $mtime) <= $cacheTtlSec) {
+	                        $cached = $readCache();
+	                        if (is_array($cached)) {
+	                            $cached['cache'] = [
+	                                'hit' => true,
+	                                'ttl_sec' => $cacheTtlSec,
+	                                'path' => $cachePath,
+	                            ];
+	                            $sendJson(200, $cached);
+	                            return;
+	                        }
+	                    }
+	                }
+	            } catch (\Throwable) {
+	                // best-effort cache
+	            }
+	        }
+
+	        try {
+	            $repo = Config::repo();
+	            $tk = TrustKernelConfig::fromRuntimeConfig(new BlackCatConfigRepositoryAdapter($repo));
+	            if ($tk === null) {
+	                $sendJson(500, ['ok' => false, 'error' => 'trust.web3 not configured']);
                 return;
             }
 
@@ -1168,35 +1538,11 @@ HttpKernel::run(
                 }
             }
 
-            $rpc = new Web3RpcQuorumClient($tk->rpcEndpoints, $tk->chainId, $tk->rpcQuorum, null, $tk->rpcTimeoutSec);
-            $ic = new InstanceControllerReader($rpc);
-
             $controller = $tk->instanceController;
-            $componentId = $ic->expectedComponentId($controller);
-            $snapshot = $ic->snapshot($controller);
-            $reporterAuthority = $ic->reporterAuthority($controller);
-            $maxCheckInAgeSec = $ic->maxCheckInAgeSec($controller);
-            $lastCheckInAt = $ic->lastCheckInAt($controller);
-            $lastCheckInOk = $ic->lastCheckInOk($controller);
-
             $nowLocal = time();
-            $checkInBase = $lastCheckInAt > 0 ? $lastCheckInAt : $snapshot->genesisAt;
-            $checkInCutoff = $maxCheckInAgeSec > 0 ? ($checkInBase + $maxCheckInAgeSec) : null;
 
             $attV1Key = $tk->runtimeConfigAttestationKey;
             $attV2Key = $tk->runtimeConfigAttestationKeyV2;
-            $attV1 = [
-                'key' => $attV1Key,
-                'value' => $ic->attestation($controller, $attV1Key),
-                'locked' => $ic->attestationLocked($controller, $attV1Key),
-                'updated_at' => $ic->attestationUpdatedAt($controller, $attV1Key),
-            ];
-            $attV2 = [
-                'key' => $attV2Key,
-                'value' => $ic->attestation($controller, $attV2Key),
-                'locked' => $ic->attestationLocked($controller, $attV2Key),
-                'updated_at' => $ic->attestationUpdatedAt($controller, $attV2Key),
-            ];
 
             $composerLockKey = KernelAttestations::composerLockAttestationKeyV1();
             $composerLockLocal = null;
@@ -1213,23 +1559,9 @@ HttpKernel::run(
                 }
             }
 
-            $composerLockOnChain = [
-                'key' => $composerLockKey,
-                'value' => $ic->attestation($controller, $composerLockKey),
-                'locked' => $ic->attestationLocked($controller, $composerLockKey),
-                'updated_at' => $ic->attestationUpdatedAt($controller, $composerLockKey),
-            ];
-
             $phpFingerprintKey = KernelAttestations::phpFingerprintAttestationKeyV2();
             $phpFingerprintPayload = KernelAttestations::phpFingerprintPayloadV2();
             $phpFingerprintLocal = KernelAttestations::phpFingerprintAttestationValueV2($phpFingerprintPayload);
-
-            $phpFingerprintOnChain = [
-                'key' => $phpFingerprintKey,
-                'value' => $ic->attestation($controller, $phpFingerprintKey),
-                'locked' => $ic->attestationLocked($controller, $phpFingerprintKey),
-                'updated_at' => $ic->attestationUpdatedAt($controller, $phpFingerprintKey),
-            ];
 
             $imageDigestKey = KernelAttestations::imageDigestAttestationKeyV1();
             $imageDigestLocal = null;
@@ -1245,17 +1577,214 @@ HttpKernel::run(
                 }
             }
 
-            $imageDigestOnChain = [
-                'key' => $imageDigestKey,
-                'value' => $ic->attestation($controller, $imageDigestKey),
-                'locked' => $ic->attestationLocked($controller, $imageDigestKey),
-                'updated_at' => $ic->attestationUpdatedAt($controller, $imageDigestKey),
+            // ===== Fast on-chain probe (batched eth_call + quorum) =====
+
+            $selectors = [
+                'expected_component_id' => '0xd6c1b425',
+                'snapshot' => '0x9711715a',
+                'release_registry' => '0x19ee073e',
+                'reporter_authority' => '0x44f644a9',
+                'max_checkin_age_sec' => '0x011641f2',
+                'last_checkin_at' => '0x11077470',
+                'last_checkin_ok' => '0x23b44f3b',
+                'attestations' => '0x940992a3',
+                'attestation_updated_at' => '0xb54917aa',
+                'attestation_locked' => '0xa93a4e86',
             ];
 
-            $payload = [
-                'ok' => true,
-                'controller' => $controller,
-                'component_id' => $componentId,
+            $decodeWord = static function (string $hex): string {
+                $hex = trim($hex);
+                if ($hex === '' || !str_starts_with($hex, '0x')) {
+                    throw new \RuntimeException('Invalid eth_call result.');
+                }
+                $payload = substr(strtolower($hex), 2);
+                if (strlen($payload) < 64) {
+                    throw new \RuntimeException('Invalid eth_call result length.');
+                }
+                $word = substr($payload, 0, 64);
+                if (!is_string($word) || strlen($word) !== 64) {
+                    throw new \RuntimeException('Invalid ABI word.');
+                }
+                return $word;
+            };
+
+            $decodeBytes32 = static function (string $hex) use ($decodeWord): string {
+                return '0x' . $decodeWord($hex);
+            };
+
+            $decodeBool = static function (string $hex) use ($decodeWord): bool {
+                $word = $decodeWord($hex);
+                return ((int) hexdec(substr($word, 62, 2))) !== 0;
+            };
+
+            $decodeUint64 = static function (string $hex) use ($decodeWord): int {
+                $word = $decodeWord($hex);
+                return (int) hexdec(substr($word, 48, 16));
+            };
+
+            $decodeAddress = static function (string $hex) use ($decodeWord): string {
+                $word = $decodeWord($hex);
+                return '0x' . strtolower(substr($word, 24, 40));
+            };
+
+            $decodeSnapshot = static function (string $hex): \BlackCat\Core\TrustKernel\InstanceControllerSnapshot {
+                $hex = trim($hex);
+                if ($hex === '' || !str_starts_with($hex, '0x')) {
+                    throw new \RuntimeException('Invalid snapshot result.');
+                }
+
+                $payload = substr(strtolower($hex), 2);
+                $expectedWords = 12;
+                $expectedChars = $expectedWords * 64;
+                if (strlen($payload) < $expectedChars) {
+                    throw new \RuntimeException('Invalid snapshot result length.');
+                }
+
+                $word = static function (int $i) use ($payload): string {
+                    $chunk = substr($payload, $i * 64, 64);
+                    if (!is_string($chunk) || strlen($chunk) !== 64) {
+                        throw new \RuntimeException('Invalid ABI word.');
+                    }
+                    return $chunk;
+                };
+
+                $version = (int) hexdec(substr($word(0), 62, 2));
+                $paused = ((int) hexdec(substr($word(1), 62, 2))) !== 0;
+
+                $activeRoot = '0x' . $word(2);
+                $activeUriHash = '0x' . $word(3);
+                $activePolicyHash = '0x' . $word(4);
+
+                $pendingRoot = '0x' . $word(5);
+                $pendingUriHash = '0x' . $word(6);
+                $pendingPolicyHash = '0x' . $word(7);
+
+                $pendingCreatedAt = (int) hexdec(substr($word(8), 48, 16));
+                $pendingTtlSec = (int) hexdec(substr($word(9), 48, 16));
+                $genesisAt = (int) hexdec(substr($word(10), 48, 16));
+                $lastUpgradeAt = (int) hexdec(substr($word(11), 48, 16));
+
+                return new \BlackCat\Core\TrustKernel\InstanceControllerSnapshot(
+                    $version,
+                    $paused,
+                    $activeRoot,
+                    $activeUriHash,
+                    $activePolicyHash,
+                    $pendingRoot,
+                    $pendingUriHash,
+                    $pendingPolicyHash,
+                    $pendingCreatedAt,
+                    $pendingTtlSec,
+                    $genesisAt,
+                    $lastUpgradeAt,
+                );
+            };
+
+            /** @var list<array{name:string,key:string}> $attKeys */
+            $attKeys = [
+                ['name' => 'runtime_config_v1', 'key' => $attV1Key],
+                ['name' => 'runtime_config_v2', 'key' => $attV2Key],
+                ['name' => 'http_allowed_hosts_v1', 'key' => $tk->httpAllowedHostsAttestationKeyV1],
+                ['name' => 'composer_lock_v1', 'key' => $composerLockKey],
+                ['name' => 'php_fingerprint_v2', 'key' => $phpFingerprintKey],
+                ['name' => 'image_digest_v1', 'key' => $imageDigestKey],
+            ];
+
+            $calls = [
+                ['to' => $controller, 'data' => $selectors['expected_component_id']],
+                ['to' => $controller, 'data' => $selectors['snapshot']],
+                ['to' => $controller, 'data' => $selectors['release_registry']],
+                ['to' => $controller, 'data' => $selectors['reporter_authority']],
+                ['to' => $controller, 'data' => $selectors['max_checkin_age_sec']],
+                ['to' => $controller, 'data' => $selectors['last_checkin_at']],
+                ['to' => $controller, 'data' => $selectors['last_checkin_ok']],
+            ];
+
+            foreach ($attKeys as $k) {
+                $calls[] = ['to' => $controller, 'data' => $selectors['attestations'] . substr($k['key'], 2)];
+            }
+            foreach ($attKeys as $k) {
+                $calls[] = ['to' => $controller, 'data' => $selectors['attestation_locked'] . substr($k['key'], 2)];
+            }
+            foreach ($attKeys as $k) {
+                $calls[] = ['to' => $controller, 'data' => $selectors['attestation_updated_at'] . substr($k['key'], 2)];
+            }
+
+            $rpcErrors = [];
+            $degradedRpc = false;
+            $rpcQuorumUsed = $tk->rpcQuorum;
+            $t0 = microtime(true);
+
+            $fetch = static function (int $quorum) use ($tk, $calls): array {
+                $rpc = new Web3RpcQuorumClient($tk->rpcEndpoints, $tk->chainId, $quorum, null, $tk->rpcTimeoutSec);
+                return $rpc->ethCallBatchQuorum($calls, 'latest');
+            };
+
+            try {
+                $results = $fetch($tk->rpcQuorum);
+            } catch (\Throwable $e) {
+                $rpcErrors[] = $e->getMessage();
+                if ($tk->rpcQuorum > 1) {
+                    $degradedRpc = true;
+                    $rpcQuorumUsed = 1;
+                    $results = $fetch(1);
+                } else {
+                    throw $e;
+                }
+            }
+
+            $rpcElapsedMs = (int) round((microtime(true) - $t0) * 1000);
+
+            $componentId = $decodeBytes32($results[0] ?? '');
+            $snapshot = $decodeSnapshot($results[1] ?? '');
+            $releaseRegistry = $decodeAddress($results[2] ?? '');
+            $reporterAuthority = $decodeAddress($results[3] ?? '');
+            $maxCheckInAgeSec = $decodeUint64($results[4] ?? '');
+            $lastCheckInAt = $decodeUint64($results[5] ?? '');
+            $lastCheckInOk = $decodeBool($results[6] ?? '');
+
+            $checkInBase = $lastCheckInAt > 0 ? $lastCheckInAt : $snapshot->genesisAt;
+            $checkInCutoff = $maxCheckInAgeSec > 0 ? ($checkInBase + $maxCheckInAgeSec) : null;
+
+            $n = count($attKeys);
+            $attValueBase = 7;
+            $attLockedBase = $attValueBase + $n;
+            $attUpdatedBase = $attLockedBase + $n;
+
+            $attOnChain = [];
+            foreach ($attKeys as $i => $k) {
+                $val = $decodeBytes32($results[$attValueBase + $i] ?? '');
+                $locked = $decodeBool($results[$attLockedBase + $i] ?? '');
+                $updatedAt = $decodeUint64($results[$attUpdatedBase + $i] ?? '');
+                $attOnChain[$k['name']] = [
+                    'key' => $k['key'],
+                    'value' => $val,
+                    'locked' => $locked,
+                    'updated_at' => $updatedAt,
+                ];
+            }
+
+            $attV1 = $attOnChain['runtime_config_v1'] ?? ['key' => $attV1Key, 'value' => null, 'locked' => null, 'updated_at' => null];
+            $attV2 = $attOnChain['runtime_config_v2'] ?? ['key' => $attV2Key, 'value' => null, 'locked' => null, 'updated_at' => null];
+
+            $composerLockOnChain = $attOnChain['composer_lock_v1'] ?? ['key' => $composerLockKey, 'value' => null, 'locked' => null, 'updated_at' => null];
+            $phpFingerprintOnChain = $attOnChain['php_fingerprint_v2'] ?? ['key' => $phpFingerprintKey, 'value' => null, 'locked' => null, 'updated_at' => null];
+            $imageDigestOnChain = $attOnChain['image_digest_v1'] ?? ['key' => $imageDigestKey, 'value' => null, 'locked' => null, 'updated_at' => null];
+            $httpAllowedHostsOnChain = $attOnChain['http_allowed_hosts_v1'] ?? null;
+
+	            $payload = [
+	                'ok' => true,
+	                'upgrade_guide_url' => '/demo/upgrade',
+	                'rpc' => [
+	                    'degraded_rpc' => $degradedRpc,
+	                    'rpc_quorum_config' => $tk->rpcQuorum,
+	                    'rpc_quorum_used' => $rpcQuorumUsed,
+	                    'rpc_timeout_sec' => $tk->rpcTimeoutSec,
+	                    'rpc_elapsed_ms' => $rpcElapsedMs,
+	                    'rpc_errors' => $rpcErrors,
+	                ],
+	                'controller' => $controller,
+	                'component_id' => $componentId,
                 'local' => [
                     'integrity_root' => $integrityRoot,
                     'integrity_uri_hash' => $integrityUriHash,
@@ -1292,29 +1821,25 @@ HttpKernel::run(
                     'image_digest_value' => $imageDigestLocal,
                     'image_digest_attestation_key' => $imageDigestKey,
                 ],
-                'on_chain' => [
-                    'controller_state' => [
-                        'snapshot' => $snapshot,
-                        'reporter_authority' => $reporterAuthority,
-                        'max_checkin_age_sec' => $maxCheckInAgeSec,
-                        'last_checkin_at' => $lastCheckInAt,
+	                'on_chain' => [
+	                    'controller_state' => [
+	                        'snapshot' => $snapshot,
+	                        'release_registry' => $releaseRegistry,
+	                        'reporter_authority' => $reporterAuthority,
+	                        'max_checkin_age_sec' => $maxCheckInAgeSec,
+	                        'last_checkin_at' => $lastCheckInAt,
                         'last_checkin_ok' => $lastCheckInOk,
                         'stale_cutoff_at' => $checkInCutoff,
                         'stale_expected_now' => is_int($checkInCutoff) ? ($nowLocal > $checkInCutoff) : null,
                         'now_local' => $nowLocal,
-                    ],
-                    'attestation_v1' => $attV1,
-                    'attestation_v2' => $attV2,
-                    'attestation_http_allowed_hosts_v1' => [
-                        'key' => $tk->httpAllowedHostsAttestationKeyV1,
-                        'value' => $ic->attestation($controller, $tk->httpAllowedHostsAttestationKeyV1),
-                        'locked' => $ic->attestationLocked($controller, $tk->httpAllowedHostsAttestationKeyV1),
-                        'updated_at' => $ic->attestationUpdatedAt($controller, $tk->httpAllowedHostsAttestationKeyV1),
-                    ],
-                    'attestation_composer_lock_v1' => $composerLockOnChain,
-                    'attestation_php_fingerprint_v1' => $phpFingerprintOnChain,
-                    'attestation_image_digest_v1' => $imageDigestOnChain,
-                ],
+	                    ],
+	                    'attestation_v1' => $attV1,
+	                    'attestation_v2' => $attV2,
+	                    'attestation_http_allowed_hosts_v1' => $httpAllowedHostsOnChain,
+	                    'attestation_composer_lock_v1' => $composerLockOnChain,
+	                    'attestation_php_fingerprint_v1' => $phpFingerprintOnChain,
+	                    'attestation_image_digest_v1' => $imageDigestOnChain,
+	                ],
                 'notes' => [
                     'To run a live upgrade demo, use blackcat-kernel-contracts Foundry scripts (publish release, set+lock attestation if needed, then propose+activate upgrade).',
                     'Use policy_hash_v3_strict_v2 if the v1 attestation key is already locked and the runtime config changed.',
@@ -1324,12 +1849,44 @@ HttpKernel::run(
                 ],
             ];
 
-            $sendJson(200, $payload);
-            return;
-        } catch (\Throwable $e) {
-            $sendJson(500, ['ok' => false, 'error' => $e->getMessage()]);
-            return;
-        }
+	            $payload['cache'] = [
+	                'hit' => false,
+	                'ttl_sec' => $cacheTtlSec,
+	                'path' => $cachePath,
+	                'generated_at' => gmdate('c'),
+	            ];
+
+	            try {
+	                $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+	                if (is_string($json) && $json !== '' && !str_contains($json, "\0")) {
+	                    @file_put_contents($cachePath, $json, LOCK_EX);
+	                    @chmod($cachePath, 0640);
+	                }
+	            } catch (\Throwable) {
+	                // best-effort cache
+	            }
+
+	            $sendJson(200, $payload);
+	            return;
+	        } catch (\Throwable $e) {
+	            $fallback = $readCache();
+	            if (is_array($fallback)) {
+	                $fallback['ok'] = true;
+	                $fallback['warning'] = 'upgrade-info compute failed; serving stale cached payload';
+	                $fallback['error'] = $e->getMessage();
+	                $fallback['cache'] = [
+	                    'hit' => true,
+	                    'stale' => true,
+	                    'ttl_sec' => $cacheTtlSec,
+	                    'path' => $cachePath,
+	                ];
+	                $sendJson(200, $fallback);
+	                return;
+	            }
+
+	            $sendJson(500, ['ok' => false, 'error' => $e->getMessage()]);
+	            return;
+	        }
     }
 
     if ($path === '/db/write') {

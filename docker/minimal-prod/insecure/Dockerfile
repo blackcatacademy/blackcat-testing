@@ -13,9 +13,9 @@ RUN set -eux; \
 WORKDIR /srv/insecure
 
 COPY blackcat-testing/environments/insecure-site/ /srv/insecure/site/
+COPY blackcat-testing/assets/ /srv/insecure/site/public/assets/
 COPY blackcat-testing/docker/minimal-prod/insecure/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
 ENTRYPOINT ["/entrypoint.sh"]
-

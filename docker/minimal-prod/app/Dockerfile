@@ -33,6 +33,8 @@ COPY --from=builder /workspace/blackcat-testing/vendor/ /srv/blackcat/vendor/
 COPY blackcat-testing/composer.json blackcat-testing/composer.lock /srv/blackcat/
 COPY blackcat-testing/src/ /srv/blackcat/src/
 COPY blackcat-testing/environments/minimal-site/ /srv/blackcat/site/
+# Static assets for demo UI.
+COPY blackcat-testing/assets/protected.png /srv/blackcat/site/public/assets/protected.png
 COPY --from=builder /workspace/blackcat-core/ /srv/blackcat-core/
 COPY --from=builder /workspace/blackcat-config/ /srv/blackcat-config/
 

@@ -101,10 +101,14 @@ Compatibility note:
 
 ## 2.1) Guided demo script (secure vs unprotected)
 
-1. Open the **unprotected** demo (`http://localhost:8089/`) and click:
+1. Open the **unprotected** demo:
+   - Auto-run attack timeline: `http://localhost:8089/start`
+   - Manual control panel: `http://localhost:8089/`
+   Then try:
    - `Leak key file` (shows exfiltration risk without a secrets boundary)
    - `Leak DB creds` (shows why env-based secrets are dangerous)
 2. Open the **protected** demo (`http://localhost:8088/`) and click:
+   - Optional: open the **protected story** page (`http://localhost:8088/demo/protected`) to auto-run the “attacker gets denied” narrative
    - `Probe key file read` → must be denied (OS permissions)
    - `Probe DB creds file read` → must be denied (OS permissions)
    - `Probe secrets-agent` → denied when `read_allowed=false` (TrustKernel enforced inside the agent)
