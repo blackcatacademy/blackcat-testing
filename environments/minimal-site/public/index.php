@@ -479,7 +479,7 @@ HttpKernel::run(
             $("btnAgentBypass").addEventListener("click", () => call("/bypass/agent", "GET"));
 	            $("btnRefreshWallets").addEventListener("click", () => refreshWallets(true));
 	            $("btnRefreshOutbox").addEventListener("click", () => refreshOutbox(true));
-	            $("btnOpenProtectedStory").addEventListener("click", () => window.open("/demo/protected", "_blank", "noopener"));
+	            $("btnOpenProtectedStory").addEventListener("click", () => window.open("/protected.html", "_blank", "noopener"));
 	            $("btnOpenUpgradeGuide").addEventListener("click", () => window.open("/demo/upgrade", "_blank", "noopener"));
 	            $("btnRefreshUpgrade").addEventListener("click", () => refreshUpgrade(true));
 		          $("btnClear").addEventListener("click", () => { $("actionsLog").textContent = "Ready.\\n"; });
@@ -496,7 +496,7 @@ HttpKernel::run(
           $("btnOpenInsecureLeakKey").addEventListener("click", () => openInsecure("/leak/key"));
           $("btnOpenInsecureLeakDb").addEventListener("click", () => openInsecure("/leak/db"));
           $("btnOpenInsecureRead").addEventListener("click", () => openInsecure("/db/read"));
-          $("btnOpenProtectedStory2").addEventListener("click", () => window.open("/demo/protected", "_blank", "noopener"));
+          $("btnOpenProtectedStory2").addEventListener("click", () => window.open("/protected.html", "_blank", "noopener"));
 
           $("btnTraffic").addEventListener("click", () => {
             if (trafficTimer) {
@@ -716,242 +716,16 @@ HttpKernel::run(
     }
 
     if ($path === '/demo/protected') {
+        // NOTE: This used to be a fully dynamic page. That design made the demo feel "stuck"
+        // on PHP built-in server (single-threaded) because the first load triggered heavy
+        // TrustKernel checks before static assets (PNG) could be served.
+        //
+        // Keep the canonical investor-facing protected story as a static-first page.
         if (!headers_sent()) {
-            http_response_code(200);
-            header('Content-Type: text/html; charset=utf-8');
+            http_response_code(302);
+            header('Location: /protected.html');
             header('Cache-Control: no-store');
         }
-
-        $insecureUrl = getenv('BLACKCAT_TESTING_INSECURE_URL') ?: 'http://localhost:8089/';
-        if (!is_string($insecureUrl) || trim($insecureUrl) === '') {
-            $insecureUrl = 'http://localhost:8089/';
-        }
-        $insecureUrl = rtrim(trim($insecureUrl), "/") . "/";
-
-        echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-        echo '<title>Protected Story (BlackCat)</title>';
-        echo '<style>
-          :root{color-scheme:dark;--bg:#07110a;--card:#0c1f12;--muted:#a6d6b8;--ok:#37d67a;--bad:#ff5c5c;--warn:#ffb84d;--b:#163423;--mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
-          body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:radial-gradient(1000px 600px at 20% -10%, rgba(55,214,122,.18), transparent 60%), var(--bg);color:#e8fff1}
-          header{padding:22px 20px;border-bottom:1px solid var(--b);background:linear-gradient(180deg,rgba(255,255,255,.04),transparent)}
-          .wrap{max-width:1200px;margin:0 auto;padding:18px 20px}
-          .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-          .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
-          .card{grid-column:span 12;background:rgba(12,31,18,.92);border:1px solid var(--b);border-radius:14px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
-          .logo{width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(0,0,0,.35))}
-          h1{margin:0 0 4px;font-size:18px;letter-spacing:.2px}
-          h2{margin:0;font-size:14px}
-          p{margin:0;color:var(--muted);font-size:13px}
-          a{color:#c6ffe0;text-decoration:none}
-          a:hover{text-decoration:underline}
-          button{appearance:none;border:1px solid var(--b);background:#0a1b10;color:#e8fff1;border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer}
-          button:hover{border-color:#2a6f44}
-          pre{margin:12px 0 0;background:#06160d;border:1px solid var(--b);border-radius:12px;padding:12px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.45;max-height:420px}
-          .pill{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;background:#06160d;border:1px solid var(--b);font-size:12px}
-          .pill.ok{border-color:rgba(55,214,122,.55);color:#d8ffea}
-          .pill.bad{border-color:rgba(255,92,92,.55);color:#ffd7d7}
-          .pill.warn{border-color:rgba(255,184,77,.6);color:#ffe7c0}
-          .muted{color:var(--muted);font-size:12px}
-          .k{font-family:var(--mono);font-size:12px;color:#c6ffe0}
-          .steps{display:grid;grid-template-columns:repeat(12,1fr);gap:10px}
-          .step{grid-column:span 12;background:#06160d;border:1px dashed var(--b);border-radius:14px;padding:10px}
-          .step.active{border-color:#2a6f44;box-shadow:0 0 0 2px rgba(55,214,122,.12) inset}
-          .step.done{border-style:solid;border-color:rgba(55,214,122,.4)}
-          .step.fail{border-style:solid;border-color:rgba(255,92,92,.5)}
-          .tag{font-family:var(--mono);font-size:11px;border:1px solid var(--b);border-radius:8px;padding:4px 8px;background:#06160d;color:#c6ffe0}
-          @media(min-width:900px){.col6{grid-column:span 6}.col7{grid-column:span 7}.col5{grid-column:span 5}}
-        </style></head><body>';
-
-        echo '<header><div class="wrap"><div class="row" style="justify-content:space-between">';
-        echo '<div class="row"><img class="logo" src="/assets/protected.png" alt="Protected"><div>';
-        echo '<h1>Protected Story (BlackCat)</h1>';
-        echo '<p>Same attacker mindset. Same target stack. Different result: <span class="k">DENIED</span>.</p>';
-        echo '<p class="muted" style="margin-top:6px"><a href="/" rel="noopener">← Back to demo</a> · <a href="' . htmlspecialchars($insecureUrl, ENT_QUOTES) . 'start" target="_blank" rel="noopener">Open unprotected attack demo →</a></p>';
-        echo '</div></div>';
-        echo '<div class="row">';
-        echo '<span class="pill ok">TrustKernel</span>';
-        echo '<span class="pill ok">Fail-closed</span>';
-        echo '<span class="pill ok">Secrets boundary</span>';
-        echo '<span class="pill ok">Host allowlist</span>';
-        echo '</div>';
-        echo '</div></div></header>';
-
-        echo '<div class="wrap"><div class="grid">';
-
-        echo '<div class="card col6"><div class="row" style="justify-content:space-between"><div><h2>Defense timeline (auto)</h2><div class="muted">This page runs safe, read-only probes and shows what gets blocked.</div></div><div class="row"><button id="btnRun">Run</button><button id="btnRefresh">Refresh state</button></div></div><pre id="console">Ready.</pre></div>';
-
-        echo '<div class="card col6"><div class="row" style="justify-content:space-between"><div><h2>Kernel state</h2><div class="muted">From <span class="k">/health</span> (safe summary).</div></div><div class="row"><span class="tag">chain_id: <span id="chainId">?</span></span><span class="tag">rpc_quorum: <span id="rpcQuorum">?</span></span></div></div><pre id="healthBox">{"loading":true}</pre></div>';
-
-        echo '<div class="card"><div class="row" style="justify-content:space-between"><div><h2>Attack attempts</h2><div class="muted">The attacker tries common exfil/bypass paths. The kernel forces <span class="k">DENY</span> (and can emit incidents).</div></div><div class="row"><a class="pill" href="/demo/tx-outbox" target="_blank" rel="noopener">Tx outbox →</a><a class="pill" href="/demo/upgrade-info" target="_blank" rel="noopener">Upgrade info →</a></div></div><div class="steps" id="steps"></div></div>';
-
-        echo '</div></div>';
-
-        echo '<script>
-          const consoleEl = document.getElementById("console");
-          const healthBox = document.getElementById("healthBox");
-          const stepsEl = document.getElementById("steps");
-          const log = (msg) => { consoleEl.textContent = (new Date().toISOString()) + " " + msg + "\\n" + consoleEl.textContent; };
-
-          async function call(path, method="GET") {
-            const res = await fetch(path, {method, cache:"no-store"});
-            const text = await res.text();
-            let json = null;
-            try { json = JSON.parse(text); } catch {}
-            return { ok: res.ok, status: res.status, text, json };
-          }
-
-          async function refreshHealth() {
-            try {
-              const r = await call("/health");
-              healthBox.textContent = JSON.stringify(r.json ?? {status:r.status, text:r.text}, null, 2);
-              try {
-                const m = await call("/demo/meta");
-                document.getElementById("chainId").textContent = m.json?.chain_id ?? "?";
-                document.getElementById("rpcQuorum").textContent = m.json?.rpc_quorum ?? "?";
-              } catch {}
-            } catch (e) {
-              healthBox.textContent = JSON.stringify({ok:false,error:String(e)}, null, 2);
-            }
-          }
-
-          function addStep(title, expected, withBlackCat) {
-            const el = document.createElement("div");
-            el.className = "step";
-            el.innerHTML = `
-              <div class="row" style="justify-content:space-between">
-                <div><strong>${title}</strong></div>
-                <div class="muted">${expected}</div>
-              </div>
-              <div class="muted" style="margin-top:6px"><strong>With BlackCat:</strong> ${withBlackCat}</div>
-              <pre class="out" style="display:none"></pre>
-            `;
-            stepsEl.appendChild(el);
-            return el;
-          }
-
-          const steps = [];
-
-          steps.push({
-            el: addStep(
-              "1) Attempt raw PDO access",
-              "Expected: DENIED",
-              "The DB wrapper refuses to expose raw PDO (prevents bypassing guards)."
-            ),
-            run: async () => call("/bypass/pdo")
-          });
-
-          steps.push({
-            el: addStep(
-              "2) Attempt direct key file read",
-              "Expected: DENIED",
-              "Key material must not be readable by the web runtime (secrets boundary)."
-            ),
-            run: async () => call("/bypass/keys")
-          });
-
-          steps.push({
-            el: addStep(
-              "3) Attempt DB credentials file read",
-              "Expected: DENIED",
-              "DB DSN/user/pass are not exposed to the web runtime."
-            ),
-            run: async () => call("/bypass/db-creds")
-          });
-
-          steps.push({
-            el: addStep(
-              "4) Attempt to talk to secrets-agent",
-              "Expected: DENIED",
-              "Agent enforces TrustKernel and blocks key export (keyless mode)."
-            ),
-            run: async () => call("/bypass/agent")
-          });
-
-          steps.push({
-            el: addStep(
-              "5) Legit DB read (allowed only when trust allows reads)",
-              "Expected: OK or DENIED (fail-closed)",
-              "If integrity/policy diverges, reads are blocked (or reduced to read-only depending on policy)."
-            ),
-            run: async () => call("/db/read")
-          });
-
-          steps.push({
-            el: addStep(
-              "6) Legit DB write (allowed only when trust allows writes)",
-              "Expected: OK or DENIED (fail-closed)",
-              "Writes are blocked immediately when trust flips (tamper → fail-closed)."
-            ),
-            run: async () => call("/db/write", "POST")
-          });
-
-          steps.push({
-            el: addStep(
-              "7) Crypto roundtrip (keyless agent)",
-              "Expected: OK or DENIED (policy-dependent)",
-              "Crypto ops can be delegated to the agent without exporting keys."
-            ),
-            run: async () => call("/crypto/roundtrip", "POST")
-          });
-
-          async function runAll() {
-            stepsEl.innerHTML = "";
-            const prepared = steps.map(s => ({...s, el: s.el})); // keep ordering
-            // Re-create DOM nodes so repeated runs look clean.
-            const defs = prepared.map(d => ({
-              title: d.el.querySelector("strong").textContent,
-              expected: d.el.querySelectorAll(".muted")[0]?.textContent ?? "",
-              withBlackCat: d.el.querySelectorAll(".muted")[1]?.textContent ?? ""
-            }));
-            steps.length = 0;
-            for (const d of defs) {
-              // Parse the label out of the existing node text.
-              steps.push({ el: addStep(d.title, d.expected, d.withBlackCat.replace(/^With BlackCat:\\s*/,"")) });
-            }
-
-            await refreshHealth();
-            log("Starting protected story...");
-
-            const runners = [
-              () => call("/bypass/pdo"),
-              () => call("/bypass/keys"),
-              () => call("/bypass/db-creds"),
-              () => call("/bypass/agent"),
-              () => call("/db/read"),
-              () => call("/db/write","POST"),
-              () => call("/crypto/roundtrip","POST"),
-            ];
-
-            for (let i=0;i<steps.length;i++) {
-              const el = steps[i].el;
-              steps.forEach(x => x.el.classList.remove("active"));
-              el.classList.add("active");
-              log(`Step ${i+1}/${steps.length}: ${el.querySelector("strong").textContent}`);
-              let r;
-              try { r = await runners[i](); } catch (e) { r = {ok:false,status:0,text:String(e),json:null}; }
-              const pre = el.querySelector("pre.out");
-              pre.style.display = "block";
-              pre.textContent = (r.json ? JSON.stringify(r.json, null, 2) : String(r.text).trim());
-              const okDenied = (r.status === 403 && (String(r.text).trim() === "denied" || String(r.text).includes("denied")));
-              const okExpected =
-                (i <= 3 && okDenied) ||
-                (i >= 4 && (r.status === 200 || r.status === 403));
-              el.classList.remove("active");
-              el.classList.add(okExpected ? "done" : "fail");
-              await new Promise(r2 => setTimeout(r2, 650));
-            }
-
-            await refreshHealth();
-            log("Finished. Compare with the unprotected /start page to see exfiltration happen.");
-          }
-
-          document.getElementById("btnRun").addEventListener("click", runAll);
-          document.getElementById("btnRefresh").addEventListener("click", refreshHealth);
-          refreshHealth();
-          runAll();
-        </script>';
-
-        echo '</body></html>';
         return;
     }
 

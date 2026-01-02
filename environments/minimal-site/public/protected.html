@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Protected Story (BlackCat)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #07110a;
+        --card: #0c1f12;
+        --muted: #a6d6b8;
+        --ok: #37d67a;
+        --bad: #ff5c5c;
+        --warn: #ffb84d;
+        --b: #163423;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+          monospace;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+        background: radial-gradient(1000px 600px at 20% -10%, rgba(55, 214, 122, 0.18), transparent 60%),
+          var(--bg);
+        color: #e8fff1;
+      }
+      header {
+        padding: 22px 20px;
+        border-bottom: 1px solid var(--b);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 18px 20px;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+      }
+      .card {
+        grid-column: span 12;
+        background: rgba(12, 31, 18, 0.92);
+        border: 1px solid var(--b);
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      }
+      .logo {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+        filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.35));
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+        letter-spacing: 0.2px;
+      }
+      h2 {
+        margin: 0;
+        font-size: 14px;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      a {
+        color: #c6ffe0;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      button {
+        appearance: none;
+        border: 1px solid var(--b);
+        background: #0a1b10;
+        color: #e8fff1;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: #2a6f44;
+      }
+      pre {
+        margin: 12px 0 0;
+        background: #06160d;
+        border: 1px solid var(--b);
+        border-radius: 12px;
+        padding: 12px;
+        overflow: auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.45;
+        max-height: 420px;
+      }
+      .pill {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #06160d;
+        border: 1px solid var(--b);
+        font-size: 12px;
+      }
+      .pill.ok {
+        border-color: rgba(55, 214, 122, 0.55);
+        color: #d8ffea;
+      }
+      .pill.bad {
+        border-color: rgba(255, 92, 92, 0.55);
+        color: #ffd7d7;
+      }
+      .pill.warn {
+        border-color: rgba(255, 184, 77, 0.6);
+        color: #ffe7c0;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .k {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: #c6ffe0;
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 10px;
+      }
+      .step {
+        grid-column: span 12;
+        background: #06160d;
+        border: 1px dashed var(--b);
+        border-radius: 14px;
+        padding: 10px;
+      }
+      .step.active {
+        border-color: #2a6f44;
+        box-shadow: 0 0 0 2px rgba(55, 214, 122, 0.12) inset;
+      }
+      .step.done {
+        border-style: solid;
+        border-color: rgba(55, 214, 122, 0.4);
+      }
+      .step.fail {
+        border-style: solid;
+        border-color: rgba(255, 92, 92, 0.5);
+      }
+      .tag {
+        font-family: var(--mono);
+        font-size: 11px;
+        border: 1px solid var(--b);
+        border-radius: 8px;
+        padding: 4px 8px;
+        background: #06160d;
+        color: #c6ffe0;
+      }
+      @media (min-width: 900px) {
+        .col6 {
+          grid-column: span 6;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <div class="row" style="justify-content: space-between">
+          <div class="row">
+            <img class="logo" src="/assets/protected.png" alt="Protected" />
+            <div>
+              <h1>Protected Story (BlackCat)</h1>
+              <p>
+                Same attacker mindset. Same target stack. Different result:
+                <span class="k">DENIED</span>.
+              </p>
+              <p class="muted" style="margin-top: 6px">
+                <a href="/" rel="noopener">← Back to demo</a> ·
+                <a href="http://localhost:8089/start" target="_blank" rel="noopener"
+                  >Open unprotected attack demo →</a
+                >
+              </p>
+            </div>
+          </div>
+          <div class="row">
+            <span class="pill ok">TrustKernel</span>
+            <span class="pill ok">Fail-closed</span>
+            <span class="pill ok">Secrets boundary</span>
+            <span class="pill ok">Host allowlist</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="grid">
+        <div class="card col6">
+          <div class="row" style="justify-content: space-between">
+            <div>
+              <h2>Defense timeline (dramatic)</h2>
+              <div class="muted">
+                This page is static-first (loads instantly). Live checks are optional.
+              </div>
+            </div>
+            <div class="row">
+              <button id="btnRun">Run story</button>
+              <button id="btnLoadHealth">Load live /health</button>
+            </div>
+          </div>
+          <pre id="console">Ready.</pre>
+          <div class="muted" style="margin-top: 10px">
+            Note: the demo runs PHP built-in server (single-threaded). If your kernel integrity check is heavy, live
+            endpoints may take time. The story still shows what’s enforced and why.
+          </div>
+        </div>
+
+        <div class="card col6">
+          <div class="row" style="justify-content: space-between">
+            <div>
+              <h2>Kernel state</h2>
+              <div class="muted">From <span class="k">/health</span> (safe summary).</div>
+            </div>
+            <div class="row">
+              <span class="tag">chain_id: <span id="chainId">?</span></span>
+              <span class="tag">rpc_quorum: <span id="rpcQuorum">?</span></span>
+            </div>
+          </div>
+          <pre id="healthBox">{"loading":false}</pre>
+          <div class="row" style="margin-top: 10px">
+            <a class="pill" href="/demo/tx-outbox" target="_blank" rel="noopener">Tx outbox →</a>
+            <a class="pill" href="/demo/upgrade-info" target="_blank" rel="noopener">Upgrade info →</a>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row" style="justify-content: space-between">
+            <div>
+              <h2>What the attacker tries (and why it fails)</h2>
+              <div class="muted">
+                These are the most common “wins” on unprotected PHP apps. In BlackCat kernel mode, they hit a wall.
+              </div>
+            </div>
+          </div>
+          <div class="steps" id="steps"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const consoleEl = document.getElementById("console");
+      const healthBox = document.getElementById("healthBox");
+      const stepsEl = document.getElementById("steps");
+      const log = (msg) => {
+        consoleEl.textContent = new Date().toISOString() + " " + msg + "\n" + consoleEl.textContent;
+      };
+
+      async function call(path, method = "GET") {
+        const res = await fetch(path, { method, cache: "no-store" });
+        const text = await res.text();
+        let json = null;
+        try {
+          json = JSON.parse(text);
+        } catch {}
+        return { ok: res.ok, status: res.status, text, json };
+      }
+
+      function addStep(title, expected, withBlackCat) {
+        const el = document.createElement("div");
+        el.className = "step";
+        el.innerHTML = `
+          <div class="row" style="justify-content:space-between">
+            <div><strong>${title}</strong></div>
+            <div class="muted">${expected}</div>
+          </div>
+          <div class="muted" style="margin-top:6px"><strong>With BlackCat:</strong> ${withBlackCat}</div>
+        `;
+        stepsEl.appendChild(el);
+        return el;
+      }
+
+      const story = [
+        {
+          title: "1) Leak DB credentials (env/files)",
+          expected: "Unprotected: instant exfil",
+          withBlackCat:
+            "DB creds are moved behind a secrets boundary; the web runtime does not see DSN/user/pass.",
+        },
+        {
+          title: "2) Read encryption keys from disk",
+          expected: "Unprotected: game over",
+          withBlackCat:
+            "Keyless crypto agent: raw key material never leaves the boundary (HSM-like).",
+        },
+        {
+          title: "3) Bypass wrappers using raw PDO",
+          expected: "Unprotected: easy bypass",
+          withBlackCat:
+            "Database wrapper blocks raw PDO access (prevents bypassing SQL firewall / guards).",
+        },
+        {
+          title: "4) Force decrypt through app code",
+          expected: "Unprotected: decrypt on demand",
+          withBlackCat:
+            "Sensitive operations are gated by TrustKernel; if integrity/policy diverges, the kernel fails closed.",
+        },
+        {
+          title: "5) Abuse host header / proxy confusion",
+          expected: "Unprotected: common misconfig",
+          withBlackCat:
+            "HttpKernel host allowlist (optional on-chain attestation) blocks unknown hosts and reduces confusion attacks.",
+        },
+        {
+          title: "6) Tamper the install (FTP / writable disk)",
+          expected: "Unprotected: silent compromise",
+          withBlackCat:
+            "Integrity mismatch triggers fail-closed + incident intent in tx-outbox (auditable).",
+        },
+      ];
+
+      for (const s of story) addStep(s.title, s.expected, s.withBlackCat);
+
+      async function loadMeta() {
+        try {
+          const m = await call("/demo/meta");
+          document.getElementById("chainId").textContent = m.json?.chain_id ?? "?";
+          document.getElementById("rpcQuorum").textContent = m.json?.rpc_quorum ?? "?";
+        } catch {}
+      }
+
+      async function loadHealth() {
+        healthBox.textContent = JSON.stringify({ loading: true }, null, 2);
+        try {
+          const r = await call("/health");
+          healthBox.textContent = JSON.stringify(r.json ?? { status: r.status, text: r.text }, null, 2);
+        } catch (e) {
+          healthBox.textContent = JSON.stringify({ ok: false, error: String(e) }, null, 2);
+        }
+      }
+
+      async function runStory() {
+        log("Starting protected story...");
+        log("Step 1: attacker tries to steal secrets → blocked by boundary.");
+        await new Promise((r) => setTimeout(r, 450));
+        log("Step 2: attacker tries to bypass database guards → blocked by kernel.");
+        await new Promise((r) => setTimeout(r, 450));
+        log("Step 3: attacker tries to force decrypt → denied when trust is not OK.");
+        await new Promise((r) => setTimeout(r, 450));
+        log("Step 4: attacker tries to persist tamper → integrity mismatch triggers fail-closed.");
+        log("Optional: click “Load live /health” to see the current status in this container.");
+      }
+
+      document.getElementById("btnRun").addEventListener("click", runStory);
+      document.getElementById("btnLoadHealth").addEventListener("click", loadHealth);
+
+      // Important: do NOT call any live endpoints before the page (and images) fully load.
+      // The minimal demo stack uses PHP built-in server (single-threaded), so a long-running
+      // kernel check can delay static asset delivery and make the page look "stuck".
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          loadMeta();
+        }, 250);
+      });
+
+      runStory();
+    </script>
+  </body>
+</html>
