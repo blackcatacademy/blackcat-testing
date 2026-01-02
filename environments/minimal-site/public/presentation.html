@@ -771,8 +771,16 @@
       }
 
       async function fetchJson(url) {
-        const res = await fetch(url, { cache: "no-store" });
-        const text = await res.text();
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 2500);
+        let res;
+        let text = "";
+        try {
+          res = await fetch(url, { cache: "no-store", signal: controller.signal });
+          text = await res.text();
+        } finally {
+          window.clearTimeout(timer);
+        }
         let json;
         try {
           json = JSON.parse(text);
@@ -824,6 +832,7 @@
           el("lnkInsecure").href = metaState.insecureBase + "/";
           el("insecureSrc").textContent = metaState.insecureBase + "/";
           el("insecureFrame").src = metaState.insecureBase + "/";
+          log("[meta] fetch failed: " + (e && e.message ? e.message : String(e)));
         }
       }
 
@@ -1174,14 +1183,63 @@
 
       // Boot
       (async () => {
-        await refreshMeta();
-        await refreshHealth();
-        await refreshProbes();
-        await refreshOutbox();
-        await refreshSoak();
-        setInterval(refreshHealth, 1000);
-        setInterval(refreshOutbox, 2000);
-        setInterval(refreshSoak, 5000);
+        const poll = (() => {
+          let healthInFlight = false;
+          let outboxInFlight = false;
+          let soakInFlight = false;
+
+          const pollHealth = async () => {
+            if (healthInFlight) return;
+            healthInFlight = true;
+            try {
+              await refreshHealth();
+            } finally {
+              healthInFlight = false;
+            }
+          };
+          const pollOutbox = async () => {
+            if (outboxInFlight) return;
+            outboxInFlight = true;
+            try {
+              await refreshOutbox();
+            } finally {
+              outboxInFlight = false;
+            }
+          };
+          const pollSoak = async () => {
+            if (soakInFlight) return;
+            soakInFlight = true;
+            try {
+              await refreshSoak();
+            } finally {
+              soakInFlight = false;
+            }
+          };
+
+          return { pollHealth, pollOutbox, pollSoak };
+        })();
+
+        try {
+          el("trustTitle").textContent = "Initializing…";
+          await refreshMeta();
+          await poll.pollHealth();
+          await refreshProbes();
+          await poll.pollOutbox();
+          await poll.pollSoak();
+        } catch (e) {
+          log("[boot] error: " + (e && e.message ? e.message : String(e)));
+          el("trustTitle").textContent = "Boot error (click Refresh)";
+        } finally {
+          window.setInterval(poll.pollHealth, 1000);
+          window.setInterval(poll.pollOutbox, 2000);
+          window.setInterval(poll.pollSoak, 5000);
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+              poll.pollHealth();
+              poll.pollOutbox();
+            }
+          });
+        }
       })();
     </script>
   </body>
