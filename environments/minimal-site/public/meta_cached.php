@@ -1,0 +1,71 @@
+<?php
+
+declare(strict_types=1);
+
+// Minimal, fast metadata endpoint for the demo UI.
+// Avoids booting TrustKernel (and hitting the chain) inside the HTTP request.
+
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($method !== 'GET' && $method !== 'HEAD') {
+    http_response_code(405);
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo "Method Not Allowed\n";
+    exit;
+}
+
+$cfgPath = '/etc/blackcat/config.runtime.json';
+$cfg = null;
+
+if (is_file($cfgPath) && !is_link($cfgPath) && is_readable($cfgPath)) {
+    $raw = @file_get_contents($cfgPath);
+    if (is_string($raw) && trim($raw) !== '') {
+        /** @var mixed $decoded */
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $cfg = $decoded;
+        }
+    }
+}
+
+$getNested = static function (?array $root, array $path): mixed {
+    $cur = $root;
+    foreach ($path as $k) {
+        if (!is_array($cur) || !array_key_exists($k, $cur)) {
+            return null;
+        }
+        $cur = $cur[$k];
+    }
+    return $cur;
+};
+
+$chainId = $getNested($cfg, ['trust', 'web3', 'chain_id']);
+$endpoints = $getNested($cfg, ['trust', 'web3', 'rpc_endpoints']);
+$quorum = $getNested($cfg, ['trust', 'web3', 'rpc_quorum']);
+$controller = $getNested($cfg, ['trust', 'web3', 'contracts', 'instance_controller']);
+
+$meta = [
+    'ok' => true,
+    'chain_id' => is_int($chainId) ? $chainId : (is_string($chainId) && ctype_digit(trim($chainId)) ? (int) trim($chainId) : null),
+    'rpc_endpoints_count' => is_array($endpoints) ? count($endpoints) : null,
+    'rpc_quorum' => is_int($quorum) ? $quorum : (is_string($quorum) && ctype_digit(trim($quorum)) ? (int) trim($quorum) : null),
+    'instance_controller' => is_string($controller) && trim($controller) !== '' ? trim($controller) : null,
+    'explorer_base_url' => null,
+    'insecure_demo_url' => getenv('BLACKCAT_TESTING_INSECURE_URL') ?: 'http://localhost:8089/',
+    'demo' => [
+        'tamper_after_sec' => getenv('BLACKCAT_TESTING_TAMPER_AFTER_SEC') ?: null,
+        'tamper_kind' => getenv('BLACKCAT_TESTING_TAMPER_KIND') ?: null,
+        'rpc_sabotage_after_sec' => getenv('BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC') ?: null,
+        'rpc_proxy_sabotage_after_sec' => getenv('BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC') ?: null,
+    ],
+];
+
+if ($meta['chain_id'] === 4207) {
+    $meta['explorer_base_url'] = 'https://edgenscan.io';
+}
+
+http_response_code(200);
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+echo json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n";
+

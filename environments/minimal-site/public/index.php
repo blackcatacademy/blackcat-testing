@@ -36,6 +36,36 @@ if (PHP_SAPI === 'cli-server') {
     }
 }
 
+// Fast-path for demo UI (avoid expensive TrustKernel checks on page render).
+// The demo runs on PHP built-in server (single-threaded) so any on-chain call blocks the UI.
+if ($path === '/' || $path === '/demo') {
+    if (!headers_sent()) {
+        http_response_code(302);
+        header('Location: /presentation.html');
+        header('Cache-Control: no-store');
+    }
+    exit;
+}
+
+// Fast cached endpoints (avoid booting TrustKernel in the HTTP request).
+if ($path === '/health') {
+    require __DIR__ . '/health_cached.php';
+    exit;
+}
+if ($path === '/health/debug') {
+    $_GET['debug'] = '1';
+    require __DIR__ . '/health_cached.php';
+    exit;
+}
+if ($path === '/demo/meta') {
+    require __DIR__ . '/meta_cached.php';
+    exit;
+}
+if ($path === '/demo/tx-outbox') {
+    require __DIR__ . '/outbox_cached.php';
+    exit;
+}
+
 require __DIR__ . '/../../vendor/autoload.php';
 
 // Allow a small monitoring endpoint even when strict mode is denying reads.
