@@ -18,13 +18,25 @@ use BlackCat\Core\TrustKernel\TrustKernelConfig;
 use BlackCat\Core\TrustKernel\Web3RpcQuorumClient;
 use BlackCat\Testing\Soak\SoakReportGenerator;
 
-require __DIR__ . '/../../vendor/autoload.php';
-
+// Built-in PHP server routing:
+// When `php -S ... public/index.php` is used as a router script, ensure static assets are served directly
+// (otherwise every PNG/HTML request would run the kernel and the demo would feel “stuck”).
 $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
 $path = parse_url((string) $requestUri, PHP_URL_PATH);
 if (!is_string($path) || $path === '') {
     $path = '/';
 }
+if (PHP_SAPI === 'cli-server') {
+    $p = $path;
+    if ($p !== '/' && str_starts_with($p, '/') && !str_contains($p, '..') && !str_contains($p, "\0")) {
+        $candidate = __DIR__ . $p;
+        if (is_file($candidate)) {
+            return false;
+        }
+    }
+}
+
+require __DIR__ . '/../../vendor/autoload.php';
 
 // Allow a small monitoring endpoint even when strict mode is denying reads.
 // This endpoint must remain read-only and must not expose secrets.

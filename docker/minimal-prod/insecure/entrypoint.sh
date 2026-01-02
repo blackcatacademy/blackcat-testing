@@ -43,4 +43,4 @@ php -r '
   );
 ' || true
 
-exec su -s /bin/sh -c "php -S 0.0.0.0:8080 -t /srv/insecure/site/public" www-data
+exec su -s /bin/sh -c "php -S 0.0.0.0:8080 -t /srv/insecure/site/public /srv/insecure/site/public/index.php" www-data

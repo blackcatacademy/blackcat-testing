@@ -52,6 +52,16 @@ Defaults (Edgen, strict):
 Notes:
 - `https://edgenscan.io/api/eth-rpc` is useful as a fallback endpoint, but it may return HTTP `429` under load; do not rely on it for strict quorum demos unless you have additional RPC providers.
 
+Optional: enable the attacker harness (traffic + tamper expectations):
+
+```bash
+docker compose \
+  -f docker/minimal-prod/docker-compose.yml \
+  -f docker/minimal-prod/docker-compose.demo.yml \
+  --profile attack \
+  up --build
+```
+
 Open:
 - `http://localhost:8088/` (protected dashboard)
 - `http://localhost:8088/presentation.html` (partner/investor view: secure vs unprotected)

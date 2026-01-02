@@ -78,6 +78,7 @@ services:
         condition: service_started
 
   attacker:
+    profiles: ["attack"]
     build:
       context: ../../..
       dockerfile: blackcat-testing/docker/minimal-prod/attacker/Dockerfile

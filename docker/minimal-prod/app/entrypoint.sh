@@ -9,6 +9,7 @@ LOCAL_RPC_PROXY="${BLACKCAT_TESTING_LOCAL_RPC_PROXY:-0}"
 RPC_PROXY_PORT="${BLACKCAT_TESTING_RPC_PROXY_PORT:-8545}"
 RPC_PROXY_UPSTREAM="${BLACKCAT_TESTING_RPC_PROXY_UPSTREAM:-}"
 RPC_PROXY_SABOTAGE_AFTER_SEC="${BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC:-0}"
+CLEAN_TX_OUTBOX="${BLACKCAT_TESTING_CLEAN_TX_OUTBOX:-1}"
 
 TAMPER_AFTER_SEC="${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
 TAMPER_KIND="${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
@@ -23,9 +24,23 @@ chmod 0750 /etc/blackcat || true
 mkdir -p /var/lib/blackcat/tx-outbox || true
 mkdir -p /var/lib/blackcat/audit-chain || true
 chmod 0750 /var/lib/blackcat || true
-chmod 0770 /var/lib/blackcat/tx-outbox || true
+# Setgid so files created by root-runner inherit group `www-data` (allows the web runtime to read summaries).
+chmod 2770 /var/lib/blackcat/tx-outbox || true
 chmod 0750 /var/lib/blackcat/audit-chain || true
 chgrp -R www-data /var/lib/blackcat >/dev/null 2>&1 || true
+
+if [ "$FORCE_PROVISION" = "1" ] && [ "$CLEAN_TX_OUTBOX" = "1" ]; then
+  echo "[entrypoint] cleaning tx-outbox (demo hygiene)" >&2
+  rm -rf /var/lib/blackcat/tx-outbox/processing >/dev/null 2>&1 || true
+  rm -rf /var/lib/blackcat/tx-outbox/signed >/dev/null 2>&1 || true
+  rm -rf /var/lib/blackcat/tx-outbox/sent >/dev/null 2>&1 || true
+  rm -rf /var/lib/blackcat/tx-outbox/failed >/dev/null 2>&1 || true
+  find /var/lib/blackcat/tx-outbox -maxdepth 1 -type f -name '*.json' -delete >/dev/null 2>&1 || true
+  find /var/lib/blackcat/tx-outbox -maxdepth 1 -type f -name '*.txt' -delete >/dev/null 2>&1 || true
+  mkdir -p /var/lib/blackcat/tx-outbox || true
+  chmod 2770 /var/lib/blackcat/tx-outbox || true
+  chgrp -R www-data /var/lib/blackcat/tx-outbox >/dev/null 2>&1 || true
+fi
 
 ROOT_DIR="/srv/blackcat"
 MANIFEST_PATH="/etc/blackcat/integrity.manifest.json"
@@ -758,4 +773,4 @@ fi
 unset BLACKCAT_DB_DSN BLACKCAT_DB_USER BLACKCAT_DB_PASS BLACKCAT_DB_RO_USER BLACKCAT_DB_RO_PASS || true
 unset DB_DSN DB_USER DB_PASS DB_RO_USER DB_RO_PASS || true
 
-exec su -s /bin/sh -c "php -S 0.0.0.0:8080 -t /srv/blackcat/site/public" www-data
+exec su -s /bin/sh -c "php -S 0.0.0.0:8080 -t /srv/blackcat/site/public /srv/blackcat/site/public/index.php" www-data

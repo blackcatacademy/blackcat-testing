@@ -8,6 +8,21 @@ declare(strict_types=1);
  * Do not reuse this code in real projects.
  */
 
+$requestUri = $_SERVER['REQUEST_URI'] ?? '/';
+$path = parse_url((string) $requestUri, PHP_URL_PATH);
+if (!is_string($path) || $path === '') {
+    $path = '/';
+}
+if (PHP_SAPI === 'cli-server') {
+    $p = $path;
+    if ($p !== '/' && str_starts_with($p, '/') && !str_contains($p, '..') && !str_contains($p, "\0")) {
+        $candidate = __DIR__ . $p;
+        if (is_file($candidate)) {
+            return false;
+        }
+    }
+}
+
 $cors = static function (): void {
     if (!headers_sent()) {
         header('Access-Control-Allow-Origin: *');
@@ -24,12 +39,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
         http_response_code(204);
     }
     exit;
-}
-
-$requestUri = $_SERVER['REQUEST_URI'] ?? '/';
-$path = parse_url((string) $requestUri, PHP_URL_PATH);
-if (!is_string($path) || $path === '') {
-    $path = '/';
 }
 
 $sendJson = static function (int $status, array $payload): void {

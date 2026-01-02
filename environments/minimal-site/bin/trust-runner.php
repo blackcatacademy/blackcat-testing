@@ -420,6 +420,15 @@ while (true) {
                         $controller = is_string($controller) ? trim($controller) : '';
 
                         if (is_string($controller) && preg_match('/^0x[a-fA-F0-9]{40}$/', $controller)) {
+                            $errorCodes = $status->errorCodes;
+                            if (is_array($errorCodes)) {
+                                $errorCodes = array_values(array_filter($errorCodes, static fn ($v): bool => is_string($v) && $v !== ''));
+                                sort($errorCodes);
+                                $errorCodes = array_values(array_unique($errorCodes));
+                            } else {
+                                $errorCodes = [];
+                            }
+
                             // IMPORTANT:
                             // - Do NOT include `checked_at` in the de-duplication key (it changes every loop).
                             // - Emit incidents on state change (or new error_codes), not on every poll.
@@ -427,7 +436,7 @@ while (true) {
                                 'schema_version' => 1,
                                 'type' => 'blackcat.trust_kernel.incident',
                                 'controller' => $controller,
-                                'error_codes' => $status->errorCodes,
+                                'error_codes' => $errorCodes,
                                 'paused' => $status->paused,
                                 'rpc_ok_now' => $status->rpcOkNow,
                                 'read_allowed' => $status->readAllowed,
@@ -441,7 +450,7 @@ while (true) {
                                     'type' => 'blackcat.trust_kernel.incident',
                                     'controller' => $controller,
                                     'checked_at' => $status->checkedAt,
-                                    'error_codes' => $status->errorCodes,
+                                    'error_codes' => $errorCodes,
                                     'paused' => $status->paused,
                                     'rpc_ok_now' => $status->rpcOkNow,
                                     'read_allowed' => $status->readAllowed,
@@ -454,7 +463,7 @@ while (true) {
                                     'to' => $controller,
                                     'meta' => [
                                         'source' => 'trust-runner',
-                                        'error_codes' => $status->errorCodes,
+                                        'error_codes' => $errorCodes,
                                     ],
                                 ];
 
