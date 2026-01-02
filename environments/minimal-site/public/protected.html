@@ -218,7 +218,7 @@
             </div>
             <div class="row">
               <button id="btnRun">Run story</button>
-              <button id="btnLoadHealth">Load live /health</button>
+              <button id="btnLoadHealth">Load kernel status (cached)</button>
             </div>
           </div>
           <pre id="console">Ready.</pre>
@@ -344,7 +344,7 @@
       async function loadHealth() {
         healthBox.textContent = JSON.stringify({ loading: true }, null, 2);
         try {
-          const r = await call("/health");
+          const r = await call("/health_cached.php");
           healthBox.textContent = JSON.stringify(r.json ?? { status: r.status, text: r.text }, null, 2);
         } catch (e) {
           healthBox.textContent = JSON.stringify({ ok: false, error: String(e) }, null, 2);

@@ -390,9 +390,9 @@ HttpKernel::run(
 	              }
 	            }
 
-		          async function refreshDebug() {
+	          async function refreshDebug() {
 	            try {
-	              const res = await fetch("/health/debug", {cache:"no-store"});
+	              const res = await fetch("/health_cached.php?debug=1", {cache:"no-store"});
 	              const json = await res.json();
 	              const trust = json && json.trust ? json.trust : null;
 	              if (!trust) return;
@@ -409,7 +409,7 @@ HttpKernel::run(
               healthInFlight = true;
               lastHealthAt = now;
 	            try {
-	              const res = await fetch("/health", {cache:"no-store"});
+	              const res = await fetch("/health_cached.php", {cache:"no-store"});
 	              const json = await res.json();
 	              const trust = json && json.trust ? json.trust : null;
 	              $("healthRaw").textContent = JSON.stringify(json, null, 2);

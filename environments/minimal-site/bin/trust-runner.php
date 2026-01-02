@@ -12,6 +12,8 @@ use BlackCat\Core\TrustKernel\AuditChain;
 use BlackCat\Core\TrustKernel\TrustKernelBootstrap;
 use BlackCat\Core\TrustKernel\TxOutbox;
 
+$statusCachePath = '/var/lib/blackcat/trust.status.json';
+
 $intervalSecRaw = getenv('BLACKCAT_TRUST_RUNNER_INTERVAL_SEC');
 $intervalSec = is_string($intervalSecRaw) && ctype_digit($intervalSecRaw) ? (int) $intervalSecRaw : 5;
 if ($intervalSec < 1) {
@@ -147,6 +149,37 @@ while (true) {
     try {
         $kernel = TrustKernelBootstrap::bootFromBlackCatConfigOrFail();
         $status = $kernel->check();
+
+        // ===== Fast status cache for demo UI =====
+        // The demo HTTP server uses PHP built-in server (single-threaded). Doing a full TrustKernel
+        // check for every /health request blocks the UI and even static assets. The runner already
+        // performs periodic checks; expose a safe snapshot via a cache file that HTTP can serve fast.
+        try {
+            if (!is_link($statusCachePath)) {
+                $tmp = $statusCachePath . '.tmp';
+
+                $debug = $status->toArray();
+                unset($debug['computed_root']); // keep parity with /health/debug
+
+                $payload = [
+                    'ok' => true,
+                    'generated_at' => gmdate('c'),
+                    'generated_unix' => $now,
+                    'trust' => [
+                        'monitor' => $status->toMonitorArray(),
+                        'debug' => $debug,
+                    ],
+                ];
+
+                @file_put_contents($tmp, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n");
+                @chmod($tmp, 0640);
+                @rename($tmp, $statusCachePath);
+                @chmod($statusCachePath, 0640);
+                @chgrp($statusCachePath, 'www-data');
+            }
+        } catch (\Throwable $e) {
+            fwrite(STDERR, "[trust-runner] WARN: unable to write status cache: " . $e->getMessage() . "\n");
+        }
 
         $outbox = TxOutbox::fromRuntimeConfigBestEffort();
         if ($outbox !== null) {
