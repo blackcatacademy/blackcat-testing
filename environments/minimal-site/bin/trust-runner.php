@@ -106,7 +106,7 @@ if (!in_array($txMode, ['authorized', 'direct'], true)) {
 }
 
 $lastCheckInEnqueuedAt = 0;
-$lastIncidentHash = null;
+$lastIncidentKey = null;
 $lastIncidentEnqueuedAt = 0;
 $lastAuditAnchorEnqueuedAt = 0;
 $lastAuditHeadHash = null;
@@ -377,17 +377,23 @@ while (true) {
             // ===== On-chain incident report (recommended) =====
             if ($emitIncidents) {
                 $isBad = !$status->trustedNow || !$status->readAllowed || !$status->writeAllowed || $status->paused || !$status->rpcOkNow;
+                if (!$isBad) {
+                    $lastIncidentKey = null;
+                }
+
                 if ($isBad && ($now - $lastIncidentEnqueuedAt) >= 5) {
                     try {
                         $controller = Config::get('trust.web3.contracts.instance_controller');
                         $controller = is_string($controller) ? trim($controller) : '';
 
                         if (is_string($controller) && preg_match('/^0x[a-fA-F0-9]{40}$/', $controller)) {
-                            $incidentHash = CanonicalJson::sha256Bytes32([
+                            // IMPORTANT:
+                            // - Do NOT include `checked_at` in the de-duplication key (it changes every loop).
+                            // - Emit incidents on state change (or new error_codes), not on every poll.
+                            $incidentKey = CanonicalJson::sha256Bytes32([
                                 'schema_version' => 1,
                                 'type' => 'blackcat.trust_kernel.incident',
                                 'controller' => $controller,
-                                'checked_at' => $status->checkedAt,
                                 'error_codes' => $status->errorCodes,
                                 'paused' => $status->paused,
                                 'rpc_ok_now' => $status->rpcOkNow,
@@ -395,7 +401,20 @@ while (true) {
                                 'write_allowed' => $status->writeAllowed,
                             ]);
 
-                            if (!is_string($lastIncidentHash) || !hash_equals($lastIncidentHash, $incidentHash)) {
+                            if (!is_string($lastIncidentKey) || !hash_equals($lastIncidentKey, $incidentKey)) {
+                                // Make each emission unique on-chain while keeping the local de-dupe stable.
+                                $incidentHash = CanonicalJson::sha256Bytes32([
+                                    'schema_version' => 1,
+                                    'type' => 'blackcat.trust_kernel.incident',
+                                    'controller' => $controller,
+                                    'checked_at' => $status->checkedAt,
+                                    'error_codes' => $status->errorCodes,
+                                    'paused' => $status->paused,
+                                    'rpc_ok_now' => $status->rpcOkNow,
+                                    'read_allowed' => $status->readAllowed,
+                                    'write_allowed' => $status->writeAllowed,
+                                ]);
+
                                 $payload = [
                                     'schema_version' => 1,
                                     'created_at' => gmdate('c'),
@@ -422,7 +441,7 @@ while (true) {
                                     $written = $outbox->enqueueWithPrefix('sig', $payload);
                                     fwrite(STDERR, "[trust-runner] outbox: queued reportIncident signature request: {$written}\n");
                                 }
-                                $lastIncidentHash = $incidentHash;
+                                $lastIncidentKey = $incidentKey;
                                 $lastIncidentEnqueuedAt = $now;
                             }
                         }

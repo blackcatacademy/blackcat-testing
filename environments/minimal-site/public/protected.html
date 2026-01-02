@@ -366,16 +366,7 @@
       document.getElementById("btnRun").addEventListener("click", runStory);
       document.getElementById("btnLoadHealth").addEventListener("click", loadHealth);
 
-      // Important: do NOT call any live endpoints before the page (and images) fully load.
-      // The minimal demo stack uses PHP built-in server (single-threaded), so a long-running
-      // kernel check can delay static asset delivery and make the page look "stuck".
-      window.addEventListener("load", () => {
-        setTimeout(() => {
-          loadMeta();
-        }, 250);
-      });
-
-      runStory();
+      consoleEl.textContent = "Ready. Click “Run story” to start (no live calls are made automatically).";
     </script>
   </body>
 </html>

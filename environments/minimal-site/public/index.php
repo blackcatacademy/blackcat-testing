@@ -273,6 +273,8 @@ HttpKernel::run(
 	          let lastTrusted = null;
 	          let lastDebugTrust = null;
 		          let debugTick = 0;
+              let healthInFlight = false;
+              let lastHealthAt = 0;
 		          let trafficTimer = null;
 		          let trafficInFlight = false;
 		          let trafficTick = 0;
@@ -334,7 +336,7 @@ HttpKernel::run(
             async function refreshOutbox(force = false) {
               const now = Date.now();
               if (!force && outboxInFlight) return;
-              if (!force && (now - lastOutboxAt) < 2000) return;
+              if (!force && (now - lastOutboxAt) < 5000) return;
               outboxInFlight = true;
               lastOutboxAt = now;
 
@@ -400,7 +402,12 @@ HttpKernel::run(
 	            }
 	          }
 
-	          async function refresh() {
+	          async function refresh(force = false) {
+              const now = Date.now();
+              if (!force && healthInFlight) return;
+              if (!force && (now - lastHealthAt) < 2500) return;
+              healthInFlight = true;
+              lastHealthAt = now;
 	            try {
 	              const res = await fetch("/health", {cache:"no-store"});
 	              const json = await res.json();
@@ -461,6 +468,8 @@ HttpKernel::run(
             } catch (e) {
               $("titleState").textContent = "Health fetch failed";
               setDot("bad");
+            } finally {
+              healthInFlight = false;
             }
           }
 
@@ -532,10 +541,10 @@ HttpKernel::run(
 	            refreshWallets(true);
 	            refreshOutbox(true);
 	            refreshUpgrade(true);
-		          setInterval(refresh, 1000);
-	            setInterval(() => refreshWallets(false), 5000);
-	            setInterval(() => refreshOutbox(false), 2000);
-	            setInterval(() => refreshUpgrade(false), 30000);
+		          setInterval(() => refresh(false), 5000);
+	            setInterval(() => refreshWallets(false), 15000);
+	            setInterval(() => refreshOutbox(false), 5000);
+	            setInterval(() => refreshUpgrade(false), 60000);
 		        </script>';
 
         echo '</body></html>';
