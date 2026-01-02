@@ -14,7 +14,7 @@ Endpoints (intentionally tiny):
 - `GET /health/debug` — extended JSON payload for local debugging (not for public monitoring).
 - `GET /demo/meta` — small JSON with demo metadata (chain_id/controller/insecure URL).
 - `GET /demo/wallets` — optional demo wallet balances via JSON-RPC quorum (addresses only).
-- `GET /demo/upgrade-info` — operator-oriented JSON (integrity root/policy hashes + on-chain attestation slots) for live upgrade demos.
+- `GET /demo/upgrade-info` — operator-oriented JSON (hashes + addresses only) for live upgrade demos, even when `trusted_now=false`.
 - `GET /demo/soak/latest` — latest attacker harness summary (requires logs mount; presentation mode).
 - `GET /demo/soak/report` — English Markdown report (requires logs mount; presentation mode).
 - `POST /db/write` — tries a DB write via `BlackCat\Core\Database` wrapper.

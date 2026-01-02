@@ -80,7 +80,9 @@ php -r '
     "http" => [
       // Host allowlist (anti Host-header injection / confusion).
       // The TrustKernel can optionally bind this value on-chain (policy v5).
-      "allowed_hosts" => ["localhost", "127.0.0.1"],
+      // Note: include the internal docker service name (`app`) so in-network probes
+      // (attacker harness / health checks) work while still rejecting unknown hosts.
+      "allowed_hosts" => ["localhost", "127.0.0.1", "app"],
     ],
     "trust" => [
       "integrity" => [
@@ -577,9 +579,20 @@ if [ "${BLACKCAT_TESTING_PROVISION_DB_SCHEMA:-1}" = "1" ]; then
   fi
 fi
 
+TAMPER_FILE="/srv/blackcat/site/public/.bc_tamper.txt"
+if [ "$FORCE_PROVISION" = "1" ] && [ -f "$TAMPER_FILE" ]; then
+  echo "[entrypoint] force-provision enabled; removing leftover tamper file: ${TAMPER_FILE}" >&2
+  rm -f "$TAMPER_FILE" >/dev/null 2>&1 || true
+fi
+
 if [ -f "$TAMPER_MARKER" ]; then
-  echo "[entrypoint] tamper marker exists, disabling tamper scheduling: ${TAMPER_MARKER}" >&2
-  TAMPER_AFTER_SEC="0"
+  if [ "$FORCE_PROVISION" = "1" ]; then
+    echo "[entrypoint] tamper marker exists but force-provision is enabled; resetting marker: ${TAMPER_MARKER}" >&2
+    rm -f "$TAMPER_MARKER" >/dev/null 2>&1 || true
+  else
+    echo "[entrypoint] tamper marker exists, disabling tamper scheduling: ${TAMPER_MARKER}" >&2
+    TAMPER_AFTER_SEC="0"
+  fi
 fi
 
 if [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then

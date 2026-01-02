@@ -474,7 +474,7 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
     private static function encodeSnapshotHex(
         bool $paused,
         string $activeRoot,
-        string $activeUriHash,
+        ?string $activeUriHash,
         string $activePolicyHash,
         int $pendingCreatedAt = 0,
         int $pendingTtlSec = 0,
@@ -483,6 +483,8 @@ final class TrustKernelOfflineAttackFlowsTest extends TestCase
     ): string
     {
         $zero = '0x' . str_repeat('00', 32);
+
+        $activeUriHash = is_string($activeUriHash) ? $activeUriHash : $zero;
 
         $words = [
             self::wordUint8(1),                    // version

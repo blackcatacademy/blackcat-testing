@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "aaaa1f5011e1efed207aa53e4336e38f",
+    "content-hash": "d9abf19a929be8cc9b8371b97a520030",
     "packages": [
         {
             "name": "blackcatacademy/blackcat-config",
@@ -12,7 +12,7 @@
             "dist": {
                 "type": "path",
                 "url": "../blackcat-config",
-                "reference": "afdbeb0500f6b8a1f2c4da64e856c711f828cf91"
+                "reference": "6bb0fb027659986d4a44240032c0a312a2742dce"
             },
             "require": {
                 "ext-json": "*",
@@ -57,7 +57,7 @@
             "dist": {
                 "type": "path",
                 "url": "../blackcat-core",
-                "reference": "d4351be1eba2de16ef2dadbb3496369f456eb216"
+                "reference": "0d5c483677b27527ead64367e7b0aec882df5b62"
             },
             "require": {
                 "ext-json": "*",
@@ -80,7 +80,7 @@
                 "blackcatacademy/blackcat-mailing": "DB-backed notifications + mail worker.",
                 "blackcatacademy/blackcat-messaging": "DB-backed outbox/inbox and messaging workers.",
                 "blackcatacademy/blackcat-rbac": "RBAC module on top of blackcat-database.",
-                "blackcatacademy/blackcat-sessions": "DB-backed sessions module (recommended over legacy core session helpers).",
+                "blackcatacademy/blackcat-sessions": "DB-backed sessions module.",
                 "ext-curl": "Used by some optional helpers (e.g. Recaptcha).",
                 "ext-mbstring": "Improves SQL preview sanitization and multibyte handling in logs."
             },
@@ -118,7 +118,7 @@
                     "vendor/bin/phpunit --colors=always"
                 ],
                 "stan": [
-                    "vendor/bin/phpstan analyse"
+                    "vendor/bin/phpstan analyse --memory-limit=512M"
                 ]
             },
             "license": [
@@ -2132,7 +2132,10 @@
     ],
     "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {},
+    "stability-flags": {
+        "blackcatacademy/blackcat-config": 20,
+        "blackcatacademy/blackcat-core": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

@@ -6,8 +6,8 @@
   "require": {
     "php": "^8.3",
     "ext-json": "*",
-    "blackcatacademy/blackcat-core": "*",
-    "blackcatacademy/blackcat-config": "*"
+    "blackcatacademy/blackcat-core": "dev-dev || dev-integration/dev || dev-release/main || dev-main",
+    "blackcatacademy/blackcat-config": "dev-dev || dev-integration/dev || dev-release/main || dev-main"
   },
   "repositories": [
     {

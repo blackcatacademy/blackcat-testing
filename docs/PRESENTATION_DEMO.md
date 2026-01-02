@@ -59,6 +59,10 @@ Open:
 - Unprotected demo (control target): `http://localhost:8089/`
 - Raw status (protected): `http://localhost:8088/health`
 
+If the dashboard shows `integrity_root_mismatch`, the on-chain `active_root` does not match this demo image yet.
+Use `http://localhost:8088/demo/upgrade-info` to get the local root/policy hashes, then run the Foundry upgrade
+runbooks in `blackcat-kernel-contracts` to propose+activate an upgrade (or deploy a fresh InstanceController for the demo).
+
 The dashboard shows:
 - `trusted_now`, `read_allowed`, `write_allowed`
 - on-chain `active_root` + `active_policy_hash`

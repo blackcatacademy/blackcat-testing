@@ -37,6 +37,7 @@ if (
     || $path === '/demo/meta'
     || $path === '/demo/wallets'
     || $path === '/demo/tx-outbox'
+    || $path === '/demo/upgrade-info'
     || $path === '/demo/soak/latest'
     || $path === '/demo/soak/report'
 ) {
@@ -173,7 +174,7 @@ HttpKernel::run(
           summary{cursor:pointer;color:var(--muted);font-size:12px}
         </style></head><body>';
 
-        echo '<header><div class="wrap"><h1>BlackCat Kernel Demo</h1><p>Live status from <span class="k">/health</span> + guarded DB probes.</p><p class="muted" style="margin-top:8px"><a id="insecureLinkTop" href="#" target="_blank" rel="noopener">Open unprotected demo →</a></p></div></header>';
+        echo '<header><div class="wrap"><h1>BlackCat Kernel Demo</h1><p>Live status from <span class="k">/health</span> + guarded DB probes.</p><p class="muted" style="margin-top:8px"><a href="/presentation.html" target="_blank" rel="noopener">Open investor presentation →</a> · <a id="insecureLinkTop" href="#" target="_blank" rel="noopener">Open unprotected demo →</a></p></div></header>';
         echo '<div class="wrap"><div class="grid">';
 
         echo '<div class="card"><div class="row" style="justify-content:space-between">';
@@ -213,11 +214,11 @@ HttpKernel::run(
         echo '</div>';
 
         echo '<div class="card"><div class="row" style="justify-content:space-between">';
-        echo '<div class="row"><span class="pill"><strong>On-chain upgrade info</strong></span><span class="pill">read-gated in strict mode</span></div>';
+        echo '<div class="row"><span class="pill"><strong>On-chain upgrade info</strong></span><span class="pill">hashes only</span></div>';
         echo '<div class="row"><button id="btnRefreshUpgrade">Refresh</button></div>';
         echo '</div>';
         echo '<pre id="upgradeBox">{"loading":true}</pre>';
-        echo '<p class="muted">This block is intentionally unavailable when strict mode denies reads. Use it to copy values for Foundry scripts (publish release / set attestation / propose+activate upgrade).</p>';
+        echo '<p class="muted">This block is safe for presentation (hashes + addresses only). Use it to copy values for Foundry scripts (publish release / set attestation / propose+activate upgrade).</p>';
         echo '</div>';
 
         echo '<div class="card"><div class="row"><button id="btnRead">DB read</button><button id="btnWrite">DB write</button><button id="btnBypass">Probe PDO bypass</button><button id="btnTraffic">Start traffic</button><button id="btnClear">Clear log</button></div>';
@@ -373,16 +374,16 @@ HttpKernel::run(
               upgradeInFlight = true;
               lastUpgradeAt = now;
 
-              try {
-                const res = await fetch("/demo/upgrade-info", {cache:"no-store"});
-                const text = await res.text();
-                $("upgradeBox").textContent = text.trim() !== "" ? text : "{}";
-              } catch (e) {
-                $("upgradeBox").textContent = "[upgrade] fetch failed (expected when strict mode denies reads)";
-              } finally {
-                upgradeInFlight = false;
-              }
-            }
+	              try {
+	                const res = await fetch("/demo/upgrade-info", {cache:"no-store"});
+	                const text = await res.text();
+	                $("upgradeBox").textContent = text.trim() !== "" ? text : "{}";
+	              } catch (e) {
+	                $("upgradeBox").textContent = "[upgrade] fetch failed";
+	              } finally {
+	                upgradeInFlight = false;
+	              }
+	            }
 
 		          async function refreshDebug() {
 	            try {
@@ -426,16 +427,26 @@ HttpKernel::run(
 	              $("activeRoot").textContent = snap && snap.active_root ? shortHex(snap.active_root) : "?";
 	              $("activePolicy").textContent = snap && snap.active_policy_hash ? shortHex(snap.active_policy_hash) : "?";
 
-	              const codes = Array.isArray(trust.error_codes) ? trust.error_codes : [];
-	              const errs = (lastDebugTrust && Array.isArray(lastDebugTrust.errors)) ? lastDebugTrust.errors : [];
-	              const errEl = $("errorsBox");
-	              if (codes.length || errs.length) {
-	                errEl.style.display = "block";
-	                errEl.textContent = "error_codes:\\n- " + (codes.length ? codes.join("\\n- ") : "(none)") + "\\n\\nerrors:\\n- " + (errs.length ? errs.join("\\n- ") : "(none)");
-	              } else {
-	                errEl.style.display = "none";
-	                errEl.textContent = "";
-	              }
+		              const codes = Array.isArray(trust.error_codes) ? trust.error_codes : [];
+		              const errs = (lastDebugTrust && Array.isArray(lastDebugTrust.errors)) ? lastDebugTrust.errors : [];
+		              const hints = [];
+		              if (codes.includes("integrity_root_mismatch")) {
+		                hints.push("Hint: local integrity root differs from on-chain active_root. Use /demo/upgrade-info + Foundry scripts to propose+activate an upgrade.");
+		              }
+		              if (codes.includes("integrity_unexpected_file")) {
+		                hints.push("Hint: strict mode rejects unexpected files under the integrity root (tamper simulation).");
+		              }
+		              const errEl = $("errorsBox");
+		              if (codes.length || errs.length || hints.length) {
+		                errEl.style.display = "block";
+		                errEl.textContent =
+		                  "error_codes:\\n- " + (codes.length ? codes.join("\\n- ") : "(none)") +
+		                  "\\n\\nerrors:\\n- " + (errs.length ? errs.join("\\n- ") : "(none)") +
+		                  (hints.length ? "\\n\\nhints:\\n- " + hints.join("\\n- ") : "");
+		              } else {
+		                errEl.style.display = "none";
+		                errEl.textContent = "";
+		              }
 
               const ok = trust.trusted_now === true;
               $("titleState").textContent = ok ? "Trusted" : "Not trusted";
@@ -525,7 +536,7 @@ HttpKernel::run(
     }
 
     if ($path === '/health') {
-        $status = $kernelCtx->kernel->check()->toMonitorArray();
+        $status = $kernelCtx->status->toMonitorArray();
 
         $sendJson(200, [
             'ok' => true,
@@ -537,7 +548,7 @@ HttpKernel::run(
     if ($path === '/health/debug') {
         // Debug payload for local development / demo UI.
         // Not intended for public monitoring endpoints.
-        $status = $kernelCtx->kernel->check()->toArray();
+        $status = $kernelCtx->status->toArray();
         unset($status['computed_root']);
 
         $sendJson(200, [

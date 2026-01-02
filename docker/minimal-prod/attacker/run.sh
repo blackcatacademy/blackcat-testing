@@ -22,9 +22,9 @@ echo "[attacker] expect_health_down_after_tamper=${EXPECT_HEALTH_DOWN_AFTER_TAMP
 echo "[attacker] log_dir=${ATTACK_LOG_DIR} log_every_sec=${ATTACK_LOG_EVERY_SEC} ready_timeout_sec=${ATTACK_READY_TIMEOUT_SEC} max_consecutive_health_fails=${ATTACK_MAX_CONSECUTIVE_HEALTH_FAILS}"
 echo "[attacker] timeouts: health=${ATTACK_HEALTH_TIMEOUT_SEC}s other_http=${ATTACK_HTTP_TIMEOUT_SEC}s"
 
-start_ts="$(date +%s)"
 tampered="0"
 consecutive_health_fails="0"
+last_logged_sec="-1"
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ).$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 mkdir -p "${ATTACK_LOG_DIR}"
@@ -141,6 +141,9 @@ wait_for_ready() {
 
 wait_for_ready "${ATTACK_READY_TIMEOUT_SEC}" "${EXPECT_TRUST_OK_AT_START}"
 
+# Use a monotonic timer for attack duration/logging (wall clock can jump under virtualization/NTP).
+SECONDS=0
+
 fetch_health
 initial_health="$(health_compact || echo '{}')"
 echo "[attacker] initial health=${initial_health}"
@@ -153,8 +156,7 @@ if (( EXPECT_TRUST_OK_AT_START == 1 )); then
 fi
 
 while true; do
-  now="$(date +%s)"
-  elapsed="$((now - start_ts))"
+  elapsed="${SECONDS}"
   if (( elapsed >= ATTACK_DURATION_SEC )); then
     break
   fi
@@ -176,7 +178,7 @@ while true; do
   write_allowed="$(echo "$health" | jq -r '.write_allowed' 2>/dev/null || echo "null")"
 
   # Normal traffic
-  code_health="$(req_code GET /health)"
+  code_health="${HEALTH_CODE}"
   code_db_read="$(req_code GET /db/read)"
   code_db_write="$(req_code POST /db/write)"
   code_bypass_pdo="$(req_code GET /bypass/pdo)"
@@ -330,7 +332,8 @@ while true; do
     fi
   fi
 
-  if (( ATTACK_LOG_EVERY_SEC > 0 && elapsed % ATTACK_LOG_EVERY_SEC == 0 )); then
+  if (( ATTACK_LOG_EVERY_SEC > 0 && elapsed % ATTACK_LOG_EVERY_SEC == 0 && elapsed != last_logged_sec )); then
+    last_logged_sec="${elapsed}"
     jq -nc \
       --arg run_id "${run_id}" \
       --arg ts "$(date -u +%FT%TZ)" \
