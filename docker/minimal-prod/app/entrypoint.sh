@@ -13,6 +13,8 @@ CLEAN_TX_OUTBOX="${BLACKCAT_TESTING_CLEAN_TX_OUTBOX:-1}"
 
 TAMPER_AFTER_SEC="${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
 TAMPER_KIND="${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
+TAMPER_WAIT_FOR_TRUST_OK="${BLACKCAT_TESTING_TAMPER_WAIT_FOR_TRUST_OK:-1}"
+TAMPER_WAIT_MAX_SEC="${BLACKCAT_TESTING_TAMPER_WAIT_MAX_SEC:-120}"
 RPC_SABOTAGE_AFTER_SEC="${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
 
 DEMO_WALLETS="${BLACKCAT_TESTING_DEMO_WALLETS:-}"
@@ -612,6 +614,32 @@ fi
 
 if [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then
   (
+    if [ "$TAMPER_WAIT_FOR_TRUST_OK" = "1" ]; then
+      echo "[entrypoint] waiting for first trusted status before scheduling tamper (max ${TAMPER_WAIT_MAX_SEC}s)" >&2
+      START_WAIT="$(date +%s)"
+      while true; do
+        php -r '
+          $p = "/var/lib/blackcat/trust.status.json";
+          if (!is_file($p) || is_link($p) || !is_readable($p)) { exit(1); }
+          $raw = @file_get_contents($p);
+          if (!is_string($raw) || trim($raw) === "") { exit(1); }
+          $j = json_decode($raw, true);
+          if (!is_array($j)) { exit(1); }
+          $t = $j["trust"]["monitor"]["trusted_now"] ?? null;
+          exit($t === true ? 0 : 1);
+        ' >/dev/null 2>&1 && break
+
+        NOW_WAIT="$(date +%s)"
+        ELAPSED="$((NOW_WAIT - START_WAIT))"
+        if [ "$ELAPSED" -ge "$TAMPER_WAIT_MAX_SEC" ]; then
+          echo "[entrypoint] WARN: trust did not become OK within ${TAMPER_WAIT_MAX_SEC}s; proceeding with tamper schedule anyway" >&2
+          break
+        fi
+
+        sleep 1 || exit 0
+      done
+    fi
+
     sleep "$TAMPER_AFTER_SEC" || exit 0
     echo "[entrypoint] simulating filesystem tamper (${TAMPER_KIND}) after ${TAMPER_AFTER_SEC}s" >&2
 
