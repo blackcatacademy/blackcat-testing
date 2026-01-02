@@ -20,11 +20,14 @@ services:
       dockerfile: blackcat-testing/docker/minimal-prod/app/Dockerfile
     environment:
       BLACKCAT_TRUST_CHAIN_ID: "${BLACKCAT_TRUST_CHAIN_ID:-4207}"
-      BLACKCAT_TRUST_RPC_ENDPOINTS: "${BLACKCAT_TRUST_RPC_ENDPOINTS:-https://rpc.layeredge.io,https://edgenscan.io/api/eth-rpc}"
-      BLACKCAT_TRUST_RPC_QUORUM: "${BLACKCAT_TRUST_RPC_QUORUM:-2}"
+      # NOTE: EdgenScan RPC is rate-limited and can return HTTP 429, which breaks strict quorum demos.
+      # For a reliable localhost demo, default to the official RPC and quorum=1.
+      # If you have multiple stable RPC endpoints, override both vars to enable quorum>=2.
+      BLACKCAT_TRUST_RPC_ENDPOINTS: "${BLACKCAT_TRUST_RPC_ENDPOINTS:-https://rpc.layeredge.io}"
+      BLACKCAT_TRUST_RPC_QUORUM: "${BLACKCAT_TRUST_RPC_QUORUM:-1}"
       BLACKCAT_TRUST_MODE: "${BLACKCAT_TRUST_MODE:-full}"
       BLACKCAT_TRUST_MAX_STALE_SEC: "${BLACKCAT_TRUST_MAX_STALE_SEC:-180}"
-      BLACKCAT_TRUST_TIMEOUT_SEC: "${BLACKCAT_TRUST_TIMEOUT_SEC:-5}"
+      BLACKCAT_TRUST_TIMEOUT_SEC: "${BLACKCAT_TRUST_TIMEOUT_SEC:-3}"
       BLACKCAT_INSTANCE_CONTROLLER: "${BLACKCAT_INSTANCE_CONTROLLER:-}"
       BLACKCAT_DB_DSN: "${BLACKCAT_DB_DSN:-mysql:host=db;dbname=blackcat_test;charset=utf8mb4}"
       BLACKCAT_DB_USER: "${BLACKCAT_DB_USER:-blackcat}"

@@ -21,11 +21,11 @@ This harness spins up:
 
 3) You have a funded test EOA (or Safe / KernelAuthority) for broadcasting.
 
-4) Decide your RPC quorum config (strict recommended).
-   - Recommended endpoints: `https://rpc.layeredge.io` and `https://edgenscan.io/api/eth-rpc`
-   - Recommended quorum: `2`
-   - Note: `trust.web3.rpc_endpoints` and `trust.web3.rpc_quorum` are part of the runtime-config attestation and
-     become immutable once locked on-chain for a given installation.
+4) Decide your RPC quorum config.
+   - Default (demo): `rpc_endpoints=["https://rpc.layeredge.io"]`, `rpc_quorum=1` (reliable localhost demo).
+   - Production-like (recommended): provide **2+ stable** RPC endpoints and set `rpc_quorum=2` (or higher).
+   - Note: `https://edgenscan.io/api/eth-rpc` may return HTTP `429` under load; treat it as a best-effort fallback unless you have additional providers.
+   - Important: `trust.web3.rpc_endpoints` and `trust.web3.rpc_quorum` are part of the runtime-config attestation and become immutable once locked on-chain for a given installation.
 
 5) Secrets-agent mode is enabled by default.
    - To disable (not recommended), set `BLACKCAT_TESTING_ENABLE_SECRETS_AGENT=0`.

@@ -26,9 +26,11 @@ This is separate from unit tests inside individual repos. Those should stay in t
 3) Commit the upgrade + runtime-config attestation on-chain (InstanceController).
 4) Run long-running traffic + attack/tamper flows (hours, if needed).
 
-Default Edgen setup uses 2 RPC endpoints with quorum=2:
+Default demo setup uses 1 RPC endpoint with quorum=1:
 - `https://rpc.layeredge.io`
-- `https://edgenscan.io/api/eth-rpc`
+
+If you want strict quorum>=2 (recommended for production-like runs), you must provide 2+ stable RPC endpoints.
+Note: `https://edgenscan.io/api/eth-rpc` can return HTTP `429` under load, so it should be treated as a best-effort fallback unless you have additional providers.
 
 ## Logs and reports
 

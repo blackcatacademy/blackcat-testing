@@ -46,8 +46,11 @@ docker compose \
 ```
 
 Defaults (Edgen, strict):
-- RPC endpoints: `https://rpc.layeredge.io` + `https://edgenscan.io/api/eth-rpc`
-- Quorum: `2` (fail-closed if any endpoint disagrees or is down; stale reads may apply depending on policy)
+- RPC endpoints: `https://rpc.layeredge.io`
+- Quorum: `1` (reliable for localhost demos; for strict quorum>=2 you must provide 2+ stable endpoints)
+
+Notes:
+- `https://edgenscan.io/api/eth-rpc` is useful as a fallback endpoint, but it may return HTTP `429` under load; do not rely on it for strict quorum demos unless you have additional RPC providers.
 
 Open:
 - `http://localhost:8088/` (protected dashboard)

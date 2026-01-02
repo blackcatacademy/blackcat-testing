@@ -44,6 +44,16 @@ Why rotation:
   - `InstanceController.upgradeAuthority()`
 - Do not commit private keys. Prefer env files that are gitignored.
 
+## Demo UI (read-only helpers)
+
+If you are running the `blackcat-testing` demo stack locally:
+
+- Dashboard: `http://localhost:8088/` → **On-chain upgrade info**
+- Upgrade guide page: `http://localhost:8088/demo/upgrade`
+- Raw JSON endpoint: `http://localhost:8088/demo/upgrade-info`
+
+Note: public RPC gateways may rate-limit (HTTP 429). The demo may show `degraded_rpc=true` and fall back to quorum=1 for this **read-only** view.
+
 ## 1) Publish release (version 13)
 
 From `blackcatacademy` root:
