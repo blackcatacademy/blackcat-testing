@@ -49,6 +49,24 @@
         backdrop-filter: blur(8px);
       }
 
+      .brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .brandLogo {
+        width: 46px;
+        height: 46px;
+        object-fit: contain;
+        border-radius: 14px;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow:
+          0 10px 30px rgba(0, 0, 0, 0.30),
+          0 0 0 4px rgba(34, 197, 94, 0.06);
+      }
+
       .wrap {
         max-width: 1200px;
         margin: 0 auto;
@@ -102,6 +120,15 @@
       .btnPrimary {
         background: linear-gradient(180deg, rgba(96, 165, 250, 0.25), rgba(96, 165, 250, 0.10));
         border-color: rgba(96, 165, 250, 0.55);
+      }
+
+      .btnDanger {
+        background: linear-gradient(180deg, rgba(239, 68, 68, 0.22), rgba(239, 68, 68, 0.08));
+        border-color: rgba(239, 68, 68, 0.55);
+      }
+      .btnOk {
+        background: linear-gradient(180deg, rgba(34, 197, 94, 0.22), rgba(34, 197, 94, 0.08));
+        border-color: rgba(34, 197, 94, 0.55);
       }
 
       .grid {
@@ -191,12 +218,71 @@
         max-height: 260px;
       }
 
-      pre.console {
+      .console {
+        margin: 12px 0 0;
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        overflow: auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.45;
+        color: rgba(255, 255, 255, 0.86);
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         word-break: break-word;
         min-height: 220px;
-        max-height: 360px;
+        max-height: 420px;
+      }
+
+      .consoleLine {
+        display: flex;
+        gap: 8px;
+        padding: 4px 6px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+      }
+      .consoleLine + .consoleLine {
+        margin-top: 4px;
+      }
+      .consoleTs {
+        color: rgba(255, 255, 255, 0.45);
+        flex: 0 0 auto;
+      }
+      .consoleMsg {
+        flex: 1 1 auto;
+      }
+      .consoleLine.secure {
+        border-color: rgba(34, 197, 94, 0.18);
+        background: rgba(34, 197, 94, 0.06);
+      }
+      .consoleLine.insecure {
+        border-color: rgba(239, 68, 68, 0.18);
+        background: rgba(239, 68, 68, 0.06);
+      }
+      .consoleLine.warn {
+        border-color: rgba(245, 158, 11, 0.20);
+        background: rgba(245, 158, 11, 0.07);
+      }
+      .consoleLine.error {
+        border-color: rgba(239, 68, 68, 0.30);
+        background: rgba(239, 68, 68, 0.10);
+      }
+      .consoleLine.meta {
+        border-color: rgba(96, 165, 250, 0.18);
+        background: rgba(96, 165, 250, 0.06);
+      }
+      .consoleCode {
+        display: inline-flex;
+        padding: 0 6px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.22);
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.45;
+        margin: 0 2px;
       }
 
       .attackGrid {
@@ -446,11 +532,16 @@
       <div class="wrap">
         <div class="hero">
           <div>
-            <h1>BlackCat Demo — Secure vs Unprotected</h1>
-            <p>
-              This is a production-like simulation. The protected target runs <span class="k">blackcat-core</span> + <span class="k">blackcat-config</span>
-              (TrustKernel, integrity, policy enforcement). The control target is intentionally insecure.
-            </p>
+            <div class="brand">
+              <img class="brandLogo" src="/assets/protected.png" alt="BlackCat protected" />
+              <div>
+                <h1>BlackCat Demo — Secure vs Unprotected</h1>
+                <p>
+                  This is a production-like simulation. The protected target runs <span class="k">blackcat-core</span> + <span class="k">blackcat-config</span>
+                  (TrustKernel, integrity, policy enforcement). The control target is intentionally insecure.
+                </p>
+              </div>
+            </div>
           </div>
           <div class="cta">
             <a class="pill" href="/dashboard.html" title="Technical dashboard (protected)"><strong>Open technical dashboard</strong> →</a>
@@ -636,39 +727,39 @@
                   <div class="attackTitle">Key exfiltration</div>
                   <div class="attackDesc">Attempt to read the crypto key file from the web runtime.</div>
                   <div class="row" style="margin-top: 8px">
-                    <button id="btnAttackKeyInsecure">Run on unprotected</button>
-                    <button id="btnAttackKeySecure">Run on protected</button>
+                    <button class="btnDanger" id="btnAttackKeyInsecure">Run on unprotected</button>
+                    <button class="btnOk" id="btnAttackKeySecure">Run on protected</button>
                   </div>
                 </div>
                 <div class="attackCard">
                   <div class="attackTitle">DB credential exfiltration</div>
                   <div class="attackDesc">Attempt to read DB credentials / env from inside the web runtime.</div>
                   <div class="row" style="margin-top: 8px">
-                    <button id="btnAttackDbCredsInsecure">Run on unprotected</button>
-                    <button id="btnAttackDbCredsSecure">Run on protected</button>
+                    <button class="btnDanger" id="btnAttackDbCredsInsecure">Run on unprotected</button>
+                    <button class="btnOk" id="btnAttackDbCredsSecure">Run on protected</button>
                   </div>
                 </div>
                 <div class="attackCard">
                   <div class="attackTitle">Raw PDO bypass</div>
                   <div class="attackDesc">Try to bypass wrappers and open a raw PDO connection.</div>
                   <div class="row" style="margin-top: 8px">
-                    <button id="btnAttackPdoInsecure">Run on unprotected</button>
-                    <button id="btnAttackPdoSecure">Run on protected</button>
+                    <button class="btnDanger" id="btnAttackPdoInsecure">Run on unprotected</button>
+                    <button class="btnOk" id="btnAttackPdoSecure">Run on protected</button>
                   </div>
                 </div>
                 <div class="attackCard">
                   <div class="attackTitle">DB write (gated)</div>
                   <div class="attackDesc">Try a DB write. Protected succeeds only when TrustKernel allows it (trusted + not paused).</div>
                   <div class="row" style="margin-top: 8px">
-                    <button id="btnAttackWriteInsecure">Run on unprotected</button>
-                    <button id="btnAttackWriteSecure">Run on protected</button>
+                    <button class="btnDanger" id="btnAttackWriteInsecure">Run on unprotected</button>
+                    <button class="btnOk" id="btnAttackWriteSecure">Run on protected</button>
                   </div>
                 </div>
                 <div class="attackCard">
                   <div class="attackTitle">DB dump (drama)</div>
                   <div class="attackDesc">Show how “dumping tables is just code” in an unprotected runtime.</div>
                   <div class="row" style="margin-top: 8px">
-                    <button id="btnAttackDbDumpInsecure">Run on unprotected</button>
+                    <button class="btnDanger" id="btnAttackDbDumpInsecure">Run on unprotected</button>
                     <button id="btnAttackDbDumpSecure">Try on protected</button>
                   </div>
                 </div>
@@ -677,16 +768,16 @@
                   <div class="attackDesc">Simulates collecting a victim email into a spam list (demo only).</div>
                   <div class="attackInput">
                     <input id="spamEmail" type="text" value="victim@example.com" aria-label="victim email" />
-                    <button id="btnAttackSpamInsecure">Run</button>
+                    <button class="btnDanger" id="btnAttackSpamInsecure">Run</button>
                   </div>
                   <div class="row" style="margin-top: 8px">
-                    <button id="btnAttackLootInsecure">Show attacker loot</button>
+                    <button class="btnDanger" id="btnAttackLootInsecure">Show attacker loot</button>
                     <button id="btnAttackLootSecure">Try loot on protected</button>
                   </div>
                 </div>
               </div>
 
-              <pre id="log" class="console">Ready.</pre>
+              <div id="log" class="console" role="log" aria-label="console output"></div>
               <div class="muted">
                 Console guide: <span class="k">200</span>=operation succeeded; <span class="k">403</span>=blocked by BlackCat guard; <span class="k">404</span>=route not present (smaller attack surface); <span class="k">503</span>=fail-closed (untrusted/RPC/tamper).
                 Secrets are redacted in this console output.
@@ -766,16 +857,65 @@
     <script>
       const el = (id) => document.getElementById(id);
       const logEl = el("log");
-      const log = (msg) => {
-        const line = new Date().toISOString() + " " + msg;
-        if (logEl) {
-          logEl.textContent = line + "\\n" + logEl.textContent;
-          if (logEl.textContent.length > 20000) {
-            logEl.textContent = logEl.textContent.slice(0, 20000);
+      const logState = {
+        lines: [],
+        maxLines: 260,
+      };
+      function inferLogKind(msg) {
+        if (typeof msg !== "string") return "meta";
+        if (msg.includes("CRITICAL") || msg.includes("ERROR") || msg.includes("UNHANDLED")) return "error";
+        if (msg.includes("fail-closed") || msg.includes("FAIL-CLOSED")) return "warn";
+        if (msg.includes("unprotected")) return "insecure";
+        if (msg.includes("protected")) return "secure";
+        if (msg.startsWith("[DEMO]")) return "meta";
+        if (msg.startsWith("[UI]")) return "meta";
+        return "meta";
+      }
+      function renderConsoleLine(ts, msg, kind) {
+        if (!logEl) return;
+        const line = document.createElement("div");
+        line.className = "consoleLine " + kind;
+
+        const tsEl = document.createElement("span");
+        tsEl.className = "consoleTs";
+        tsEl.textContent = ts;
+
+        const msgEl = document.createElement("span");
+        msgEl.className = "consoleMsg";
+
+        const m = String(msg);
+        const parts = m.split(/(HTTP\\s+\\d{3})/g);
+        for (const p of parts) {
+          if (/^HTTP\\s+\\d{3}$/.test(p)) {
+            const c = document.createElement("span");
+            c.className = "consoleCode";
+            c.textContent = p;
+            msgEl.appendChild(c);
+            continue;
           }
-        } else {
+          msgEl.appendChild(document.createTextNode(p));
+        }
+
+        line.appendChild(tsEl);
+        line.appendChild(msgEl);
+
+        logEl.insertBefore(line, logEl.firstChild);
+        while (logEl.childNodes.length > logState.maxLines) {
+          logEl.removeChild(logEl.lastChild);
+        }
+      }
+      const log = (msg, kind) => {
+        const ts = new Date().toISOString();
+        const k = typeof kind === "string" && kind !== "" ? kind : inferLogKind(String(msg));
+        const text = ts + " " + String(msg);
+        logState.lines.unshift(text);
+        if (logState.lines.length > logState.maxLines) {
+          logState.lines.length = logState.maxLines;
+        }
+        renderConsoleLine(ts, String(msg), k);
+        if (!logEl) {
           // eslint-disable-next-line no-console
-          console.log(line);
+          console.log(text);
         }
       };
 
@@ -1462,7 +1602,7 @@
 
         const url = base + def.path;
         const label = (isSecure ? "protected" : "unprotected") + " " + def.method + " " + def.path;
-        log("[attack] " + attackId + " -> " + label);
+        log("[attack] " + attackId + " -> " + label, isSecure ? "secure" : "insecure");
 
         if (!isSecure) {
           const f = el("insecureFrame");
@@ -1497,14 +1637,16 @@
 
           const summary = summarizeAttack(attackId, json);
           if (summary !== null) {
-            log("[attack] result HTTP " + status + " — " + msg);
-            log("[attack] summary: " + JSON.stringify(summary, null, 2));
+            const lineKind = msg.includes("CRITICAL") ? "error" : isSecure ? "secure" : "insecure";
+            log("[attack] result HTTP " + status + " — " + msg, lineKind);
+            log("[attack] summary: " + JSON.stringify(summary, null, 2), lineKind);
           } else {
-            log("[attack] result HTTP " + status + " — " + msg);
-            log("[attack] body: " + text.trim().slice(0, 200) + (text.length > 200 ? "…(truncated)" : ""));
+            const lineKind = msg.includes("CRITICAL") ? "error" : isSecure ? "secure" : "insecure";
+            log("[attack] result HTTP " + status + " — " + msg, lineKind);
+            log("[attack] body: " + text.trim().slice(0, 200) + (text.length > 200 ? "…(truncated)" : ""), lineKind);
           }
         } catch (e) {
-          log("[attack] ERROR: " + (e && e.message ? e.message : String(e)));
+          log("[attack] ERROR: " + (e && e.message ? e.message : String(e)), "error");
         }
       }
 
@@ -1608,23 +1750,25 @@
       });
       bindClick("btnAutopilot", guidedDemo);
       bindClick("btnClearLog", () => {
-        if (logEl) logEl.textContent = "Ready.";
+        if (logEl) logEl.textContent = "";
+        logState.lines = [];
+        log("Ready.", "meta");
       });
       bindClick("btnCopyLog", async () => {
         try {
-          const t = logEl ? logEl.textContent : "";
+          const t = logState.lines.slice().reverse().join("\n");
           if (!t) {
             log("[ui] console empty");
             return;
           }
           if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
             await navigator.clipboard.writeText(t);
-            log("[ui] console copied to clipboard");
+            log("[ui] console copied to clipboard", "meta");
             return;
           }
           throw new Error("clipboard not available");
         } catch (e) {
-          log("[ui] copy failed: " + (e && e.message ? e.message : String(e)));
+          log("[ui] copy failed: " + (e && e.message ? e.message : String(e)), "warn");
         }
       });
 
@@ -1694,6 +1838,7 @@
 
         try {
           el("trustTitle").textContent = "Initializing…";
+          log("Booting presentation UI…", "meta");
           await refreshMeta();
           await poll.pollHealth();
           await refreshProbes();
