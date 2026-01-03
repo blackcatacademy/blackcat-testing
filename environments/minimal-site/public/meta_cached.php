@@ -76,9 +76,49 @@ $demo = [
     'tamper_after_sec' => null,
     'tamper_kind' => null,
     'tamper_marker_exists' => null,
+    'tamper_marker_mtime_unix' => null,
+    'tamper_armed_at_unix' => null,
     'rpc_sabotage_after_sec' => null,
     'rpc_proxy_sabotage_after_sec' => null,
 ];
+
+$demoStateMtime = null;
+if (is_file($demoStatePath) && !is_link($demoStatePath)) {
+    clearstatcache(true, $demoStatePath);
+    $mt = @filemtime($demoStatePath);
+    if (is_int($mt) && $mt > 0) {
+        $demoStateMtime = $mt;
+        $demo['tamper_armed_at_unix'] = $mt;
+    }
+}
+
+$markerPath = '/etc/blackcat/.blackcat_testing_tamper_done';
+if (is_array($demoState)) {
+    $tamper = $demoState['tamper'] ?? null;
+    if (is_array($tamper)) {
+        $p = $tamper['marker_path'] ?? null;
+        if (
+            is_string($p)
+            && $p !== ''
+            && !str_contains($p, "\0")
+            && str_starts_with($p, '/etc/blackcat/')
+        ) {
+            $markerPath = $p;
+        }
+    }
+}
+
+if ($markerPath !== '' && !str_contains($markerPath, "\0")) {
+    $markerExists = is_file($markerPath) && !is_link($markerPath);
+    $demo['tamper_marker_exists'] = $markerExists;
+    if ($markerExists) {
+        clearstatcache(true, $markerPath);
+        $mt = @filemtime($markerPath);
+        if (is_int($mt) && $mt > 0) {
+            $demo['tamper_marker_mtime_unix'] = $mt;
+        }
+    }
+}
 
 if (is_array($demoState)) {
     $tamper = $demoState['tamper'] ?? null;
@@ -93,11 +133,6 @@ if (is_array($demoState)) {
         $kind = $tamper['kind'] ?? null;
         if (is_string($kind) && trim($kind) !== '') {
             $demo['tamper_kind'] = trim($kind);
-        }
-
-        $markerExists = $tamper['marker_exists'] ?? null;
-        if (is_bool($markerExists)) {
-            $demo['tamper_marker_exists'] = $markerExists;
         }
     }
 

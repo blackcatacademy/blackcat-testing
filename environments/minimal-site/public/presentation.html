@@ -761,8 +761,12 @@
 
           <div class="statsGrid" aria-label="scenario state">
             <div class="stat">
-              <div class="statLabel">Armed tamper</div>
+              <div class="statLabel">Tamper schedule</div>
               <div id="scTamper" class="statVal warn">loading…</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">Tamper execution</div>
+              <div id="scTamperExec" class="statVal warn">loading…</div>
             </div>
             <div class="stat">
               <div class="statLabel">RPC endpoints</div>
@@ -1220,6 +1224,9 @@
         controller: null,
         tamperAfterSec: null,
         tamperKind: null,
+        tamperArmedAtUnix: null,
+        tamperMarkerExists: null,
+        tamperMarkerMtimeUnix: null,
         operatorUrl: null,
         operatorToken: null,
       };
@@ -1626,10 +1633,24 @@
             typeof json.demo === "object" && json.demo && typeof json.demo.tamper_kind === "string" && json.demo.tamper_kind.trim() !== ""
               ? json.demo.tamper_kind.trim()
               : null;
+          metaState.tamperArmedAtUnix =
+            typeof json.demo === "object" && json.demo && typeof json.demo.tamper_armed_at_unix === "number" ? json.demo.tamper_armed_at_unix : null;
+          metaState.tamperMarkerExists =
+            typeof json.demo === "object" && json.demo && typeof json.demo.tamper_marker_exists === "boolean"
+              ? json.demo.tamper_marker_exists
+              : null;
+          metaState.tamperMarkerMtimeUnix =
+            typeof json.demo === "object" && json.demo && typeof json.demo.tamper_marker_mtime_unix === "number"
+              ? json.demo.tamper_marker_mtime_unix
+              : null;
 
           el("lnkInsecure").href = metaState.insecureBase + "/start";
           el("insecureSrc").textContent = metaState.insecureBase + "/start";
-          el("insecureFrame").src = metaState.insecureBase + "/start";
+          const newFrameSrc = metaState.insecureBase + "/start";
+          const iframe = el("insecureFrame");
+          if (iframe && iframe.src !== newFrameSrc) {
+            iframe.src = newFrameSrc;
+          }
 
           if (metaState.chainId !== null) {
             el("chainId").textContent = String(metaState.chainId);
@@ -1650,8 +1671,9 @@
           if (ti) {
             const after = metaState.tamperAfterSec;
             const kind = metaState.tamperKind;
+            const executed = metaState.tamperMarkerExists === true;
             if (typeof after === "number" && after > 0) {
-              ti.textContent = after + "s / " + (kind || "unknown");
+              ti.textContent = executed ? ("executed / " + (kind || "unknown")) : ("armed / " + (kind || "unknown") + " @ " + after + "s");
             } else if (typeof after === "number" && after === 0) {
               ti.textContent = "disabled";
             } else {
@@ -1665,7 +1687,7 @@
             const after = metaState.tamperAfterSec;
             const kind = metaState.tamperKind || null;
             if (typeof after === "number" && after > 0) {
-              scTamper.textContent = (kind || "unknown") + " @ " + after + "s";
+              scTamper.textContent = (kind || "unknown") + " @ +" + after + "s";
               scTamper.className = "statVal warn";
             } else if (typeof after === "number" && after === 0) {
               scTamper.textContent = "disabled";
@@ -1673,6 +1695,27 @@
             } else {
               scTamper.textContent = "unknown";
               scTamper.className = "statVal warn";
+            }
+          }
+
+          const scTamperExec = el("scTamperExec");
+          if (scTamperExec) {
+            const after = metaState.tamperAfterSec;
+            const markerOk = metaState.tamperMarkerExists === true;
+            const markerAt = typeof metaState.tamperMarkerMtimeUnix === "number" ? metaState.tamperMarkerMtimeUnix : null;
+            if (typeof after === "number" && after === 0) {
+              scTamperExec.textContent = "n/a";
+              scTamperExec.className = "statVal ok";
+            } else if (markerOk) {
+              const ts = markerAt ? new Date(markerAt * 1000).toISOString().replace(/\.\d{3}Z$/, "Z") : null;
+              scTamperExec.textContent = ts ? ("TRIGGERED @ " + ts) : "TRIGGERED";
+              scTamperExec.className = "statVal bad";
+            } else if (typeof after === "number" && after > 0) {
+              scTamperExec.textContent = "pending";
+              scTamperExec.className = "statVal warn";
+            } else {
+              scTamperExec.textContent = "?";
+              scTamperExec.className = "statVal warn";
             }
           }
 
@@ -2413,8 +2456,26 @@
 
         const poll = (() => {
           let healthInFlight = false;
+          let metaInFlight = false;
           let outboxInFlight = false;
           let soakInFlight = false;
+
+          const pollMeta = async () => {
+            const after = metaState.tamperAfterSec;
+            const markerOk = metaState.tamperMarkerExists === true;
+            if (!(typeof after === "number" && after > 0) || markerOk) {
+              return;
+            }
+
+            if (metaInFlight) return;
+            metaInFlight = true;
+            try {
+              // Refresh only to observe the tamper marker transition (so the UI doesn't claim a tamper happened early).
+              await refreshMeta();
+            } finally {
+              metaInFlight = false;
+            }
+          };
 
           const pollHealth = async () => {
             if (healthInFlight) return;
@@ -2444,7 +2505,7 @@
             }
           };
 
-          return { pollHealth, pollOutbox, pollSoak };
+          return { pollMeta, pollHealth, pollOutbox, pollSoak };
         })();
 
         try {
@@ -2459,11 +2520,13 @@
           log("[boot] error: " + (e && e.message ? e.message : String(e)));
           el("trustTitle").textContent = "Boot error (click Refresh)";
         } finally {
+          window.setInterval(poll.pollMeta, 1000);
           window.setInterval(poll.pollHealth, 1000);
           window.setInterval(poll.pollOutbox, 2000);
           window.setInterval(poll.pollSoak, 5000);
           document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === "visible") {
+              poll.pollMeta();
               poll.pollHealth();
               poll.pollOutbox();
             }
