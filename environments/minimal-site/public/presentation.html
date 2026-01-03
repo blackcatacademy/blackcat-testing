@@ -53,18 +53,26 @@
         display: flex;
         gap: 12px;
         align-items: center;
+        flex-wrap: wrap;
       }
       .brandLogo {
-        width: 46px;
-        height: 46px;
+        width: 108px;
+        height: 108px;
         object-fit: contain;
-        border-radius: 14px;
+        border-radius: 18px;
         padding: 8px;
         background: rgba(0, 0, 0, 0.25);
         border: 1px solid rgba(255, 255, 255, 0.12);
         box-shadow:
           0 10px 30px rgba(0, 0, 0, 0.30),
           0 0 0 4px rgba(34, 197, 94, 0.06);
+      }
+      @media (max-width: 520px) {
+        .brandLogo {
+          width: 76px;
+          height: 76px;
+          border-radius: 16px;
+        }
       }
 
       .wrap {
@@ -83,14 +91,16 @@
 
       .hero h1 {
         margin: 0 0 6px;
-        font-size: 26px;
+        font-size: 30px;
         letter-spacing: -0.02em;
+        line-height: 1.15;
       }
 
       .hero p {
         margin: 0;
         color: var(--m);
         max-width: 860px;
+        line-height: 1.5;
       }
 
       .cta {
@@ -386,10 +396,15 @@
 
       iframe {
         width: 100%;
-        height: 420px;
+        height: 360px;
         border-radius: 14px;
         border: 1px solid rgba(255, 255, 255, 0.12);
         background: rgba(0, 0, 0, 0.25);
+      }
+      @media (min-width: 980px) {
+        iframe {
+          height: 320px;
+        }
       }
 
       canvas {
@@ -668,8 +683,8 @@
                   <span class="pill">auto-verified (live)</span>
                 </div>
                 <div class="row">
-                  <button id="btnShowLeakKey">Show unprotected: leak key</button>
-                  <button id="btnShowLeakDb">Show unprotected: leak DB creds</button>
+                  <button id="btnShowLeakKey">Open raw JSON: leak key</button>
+                  <button id="btnShowLeakDb">Open raw JSON: leak DB creds</button>
                 </div>
               </div>
 
@@ -714,11 +729,7 @@
                 <div class="row">
                   <span class="pill"><strong>Attack panel</strong></span>
                   <span class="pill">click-to-run</span>
-                  <span class="pill">secrets redacted in console</span>
-                </div>
-                <div class="row">
-                  <button id="btnClearLog">Clear console</button>
-                  <button id="btnCopyLog">Copy</button>
+                  <span class="pill">results → console on the right</span>
                 </div>
               </div>
 
@@ -776,12 +787,6 @@
                   </div>
                 </div>
               </div>
-
-              <div id="log" class="console" role="log" aria-label="console output"></div>
-              <div class="muted">
-                Console guide: <span class="k">200</span>=operation succeeded; <span class="k">403</span>=blocked by BlackCat guard; <span class="k">404</span>=route not present (smaller attack surface); <span class="k">503</span>=fail-closed (untrusted/RPC/tamper).
-                Secrets are redacted in this console output.
-              </div>
             </div>
 
             <div class="right">
@@ -792,6 +797,27 @@
               <iframe id="insecureFrame" title="unprotected demo"></iframe>
               <div class="muted">
                 This iframe renders the unprotected demo. It is intentionally insecure and should never be deployed publicly.
+              </div>
+
+              <div class="row" style="justify-content: space-between; margin-top: 12px">
+                <div class="row">
+                  <span class="pill"><strong>Console</strong></span>
+                  <span class="pill">live results</span>
+                  <span class="pill">red/green</span>
+                </div>
+                <div class="row">
+                  <button id="btnClearLog">Clear</button>
+                  <button id="btnCopyLog">Copy</button>
+                </div>
+              </div>
+              <div id="log" class="console" role="log" aria-label="console output"></div>
+              <div class="muted">
+                <strong>Meaning:</strong>
+                <span class="k">HTTP 200</span>=succeeded,
+                <span class="k">HTTP 403</span>=blocked by BlackCat guard,
+                <span class="k">HTTP 404</span>=route not present (reduced surface),
+                <span class="k">HTTP 503</span>=fail-closed (untrusted/RPC/tamper).
+                Secrets are redacted in this console output.
               </div>
             </div>
           </div>
@@ -1245,9 +1271,9 @@
               ? json.demo.tamper_kind.trim()
               : null;
 
-          el("lnkInsecure").href = metaState.insecureBase + "/";
-          el("insecureSrc").textContent = metaState.insecureBase + "/";
-          el("insecureFrame").src = metaState.insecureBase + "/";
+          el("lnkInsecure").href = metaState.insecureBase + "/start";
+          el("insecureSrc").textContent = metaState.insecureBase + "/start";
+          el("insecureFrame").src = metaState.insecureBase + "/start";
 
           if (metaState.chainId !== null) {
             el("chainId").textContent = String(metaState.chainId);
@@ -1278,9 +1304,9 @@
           }
         } catch (e) {
           metaState.insecureBase = deriveInsecureBaseFromHost();
-          el("lnkInsecure").href = metaState.insecureBase + "/";
-          el("insecureSrc").textContent = metaState.insecureBase + "/";
-          el("insecureFrame").src = metaState.insecureBase + "/";
+          el("lnkInsecure").href = metaState.insecureBase + "/start";
+          el("insecureSrc").textContent = metaState.insecureBase + "/start";
+          el("insecureFrame").src = metaState.insecureBase + "/start";
           log("[meta] fetch failed: " + (e && e.message ? e.message : String(e)));
         }
       }
@@ -1580,6 +1606,19 @@
         renderScoreBars();
       }
 
+      function ensureInsecureTheatre() {
+        const f = el("insecureFrame");
+        if (!f) return;
+        const base = (metaState.insecureBase || deriveInsecureBaseFromHost()).replace(/\/+$/, "");
+        const want = base + "/start";
+        try {
+          if (typeof f.src === "string" && f.src.startsWith(want)) return;
+        } catch {
+          // ignore
+        }
+        f.src = want;
+      }
+
       async function runAttack(attackId, target) {
         const isSecure = target === "secure";
         const base = isSecure ? "" : metaState.insecureBase;
@@ -1605,8 +1644,7 @@
         log("[attack] " + attackId + " -> " + label, isSecure ? "secure" : "insecure");
 
         if (!isSecure) {
-          const f = el("insecureFrame");
-          if (f) f.src = url;
+          ensureInsecureTheatre();
         }
 
         try {
@@ -1660,17 +1698,20 @@
         }
         try {
           log("[DEMO] Step 1/6: show unprotected key exfiltration");
-          el("insecureFrame").src = metaState.insecureBase + "/leak/key";
+          ensureInsecureTheatre();
+          await runAttack("key_exfil", "insecure");
           await refreshProbes();
           await new Promise((r) => setTimeout(r, 2500));
 
           log("[DEMO] Step 2/6: show unprotected DB credential exfiltration");
-          el("insecureFrame").src = metaState.insecureBase + "/leak/db";
+          ensureInsecureTheatre();
+          await runAttack("db_creds", "insecure");
           await refreshProbes();
           await new Promise((r) => setTimeout(r, 2500));
 
           log("[DEMO] Step 3/6: show unprotected raw PDO bypass");
-          el("insecureFrame").src = metaState.insecureBase + "/bypass/pdo";
+          ensureInsecureTheatre();
+          await runAttack("pdo_bypass", "insecure");
           await refreshProbes();
           await new Promise((r) => setTimeout(r, 2500));
 
@@ -1787,12 +1828,12 @@
       bindClick("btnAttackLootSecure", () => runAttack("loot", "secure"));
 
       bindClick("btnShowLeakKey", () => {
-        const f = el("insecureFrame");
-        if (f) f.src = metaState.insecureBase + "/leak/key";
+        const base = (metaState.insecureBase || deriveInsecureBaseFromHost()).replace(/\/+$/, "");
+        window.open(base + "/leak/key", "_blank", "noopener");
       });
       bindClick("btnShowLeakDb", () => {
-        const f = el("insecureFrame");
-        if (f) f.src = metaState.insecureBase + "/leak/db";
+        const base = (metaState.insecureBase || deriveInsecureBaseFromHost()).replace(/\/+$/, "");
+        window.open(base + "/leak/db", "_blank", "noopener");
       });
 
       // Boot
