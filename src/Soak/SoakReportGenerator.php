@@ -87,7 +87,9 @@ final class SoakReportGenerator
         $outbox = null;
         if (is_string($outboxDir) && trim($outboxDir) !== '') {
             try {
-                $outbox = self::scanOutbox(trim($outboxDir));
+                $windowStartUnix = self::parseUnixFromIsoTs($events['first_ts'] ?? null);
+                $windowEndUnix = self::parseUnixFromIsoTs($events['last_ts'] ?? null);
+                $outbox = self::scanOutbox(trim($outboxDir), $windowStartUnix, $windowEndUnix);
             } catch (\Throwable $e) {
                 $outbox = [
                     'dir' => trim($outboxDir),
@@ -434,11 +436,14 @@ final class SoakReportGenerator
      * @return array{
      *   dir:string,
      *   sig:array{pending:int,processing:int,signed:int,failed:int,total:int,by_kind:array<string,int>},
+     *   sig_window?:array{pending:int,processing:int,signed:int,failed:int,total:int,by_kind:array<string,int>},
      *   tx:array{pending:int,processing:int,sent:int,failed:int,total:int,by_method:array<string,int>},
+     *   tx_window?:array{pending:int,processing:int,sent:int,failed:int,total:int,by_method:array<string,int>},
      *   receipts:array{total:int,dry_run:int,pending:int,success:int,revert:int,unknown:int}
+     *   receipts_window?:array{total:int,dry_run:int,pending:int,success:int,revert:int,unknown:int}
      * }
      */
-    private static function scanOutbox(string $outboxDir): array
+    private static function scanOutbox(string $outboxDir, ?int $windowStartUnix, ?int $windowEndUnix): array
     {
         $outboxDir = self::normalizeDir($outboxDir, 'tx_outbox_dir');
 
@@ -456,6 +461,12 @@ final class SoakReportGenerator
         $sigProcessing = 0;
         $sigSigned = 0;
         $sigFailed = 0;
+
+        $sigByKindWindow = [];
+        $sigPendingWindow = 0;
+        $sigProcessingWindow = 0;
+        $sigSignedWindow = 0;
+        $sigFailedWindow = 0;
 
         foreach (['root' => 'pending', 'processing' => 'processing', 'signed' => 'signed', 'failed' => 'failed'] as $key => $bucket) {
             $dir = $dirs[$key];
@@ -476,6 +487,14 @@ final class SoakReportGenerator
                 }
                 $kind = trim($kind);
                 $sigByKind[$kind] = ($sigByKind[$kind] ?? 0) + 1;
+
+                if (self::isInWindow(self::parseCreatedAtUnix($payload), $windowStartUnix, $windowEndUnix)) {
+                    $bucket === 'pending' && $sigPendingWindow++;
+                    $bucket === 'processing' && $sigProcessingWindow++;
+                    $bucket === 'signed' && $sigSignedWindow++;
+                    $bucket === 'failed' && $sigFailedWindow++;
+                    $sigByKindWindow[$kind] = ($sigByKindWindow[$kind] ?? 0) + 1;
+                }
             }
         }
 
@@ -485,6 +504,12 @@ final class SoakReportGenerator
         $txProcessing = 0;
         $txSent = 0;
         $txFailed = 0;
+
+        $txByMethodWindow = [];
+        $txPendingWindow = 0;
+        $txProcessingWindow = 0;
+        $txSentWindow = 0;
+        $txFailedWindow = 0;
 
         foreach (['root' => 'pending', 'processing' => 'processing', 'sent' => 'sent', 'failed' => 'failed'] as $key => $bucket) {
             $dir = $dirs[$key];
@@ -505,6 +530,14 @@ final class SoakReportGenerator
                 }
                 $method = trim($method);
                 $txByMethod[$method] = ($txByMethod[$method] ?? 0) + 1;
+
+                if (self::isInWindow(self::parseCreatedAtUnix($payload), $windowStartUnix, $windowEndUnix)) {
+                    $bucket === 'pending' && $txPendingWindow++;
+                    $bucket === 'processing' && $txProcessingWindow++;
+                    $bucket === 'sent' && $txSentWindow++;
+                    $bucket === 'failed' && $txFailedWindow++;
+                    $txByMethodWindow[$method] = ($txByMethodWindow[$method] ?? 0) + 1;
+                }
             }
         }
 
@@ -515,25 +548,39 @@ final class SoakReportGenerator
         $receiptRevert = 0;
         $receiptUnknown = 0;
 
+        $receiptTotalWindow = 0;
+        $receiptDryRunWindow = 0;
+        $receiptPendingWindow = 0;
+        $receiptSuccessWindow = 0;
+        $receiptRevertWindow = 0;
+        $receiptUnknownWindow = 0;
+
         if (is_dir($dirs['sent']) && !is_link($dirs['sent']) && is_readable($dirs['sent'])) {
             $receiptFiles = self::globSorted($dirs['sent'] . DIRECTORY_SEPARATOR . '*.receipt.json');
             foreach ($receiptFiles as $rf) {
                 $receiptTotal++;
+                $inWindow = self::isInWindow(self::tryFileMtime($rf), $windowStartUnix, $windowEndUnix);
+                if ($inWindow) {
+                    $receiptTotalWindow++;
+                }
                 $payload = self::readJsonFileIfExists($rf);
                 if (!is_array($payload)) {
                     $receiptUnknown++;
+                    $inWindow && $receiptUnknownWindow++;
                     continue;
                 }
 
                 $dry = $payload['dry_run'] ?? null;
                 if (is_bool($dry) && $dry) {
                     $receiptDryRun++;
+                    $inWindow && $receiptDryRunWindow++;
                     continue;
                 }
 
                 $receipt = $payload['receipt'] ?? null;
                 if (is_string($receipt) && strtolower(trim($receipt)) === 'pending') {
                     $receiptPending++;
+                    $inWindow && $receiptPendingWindow++;
                     continue;
                 }
 
@@ -542,26 +589,32 @@ final class SoakReportGenerator
                     $s = strtolower(trim($status));
                     if ($s === '0x1' || $s === '1') {
                         $receiptSuccess++;
+                        $inWindow && $receiptSuccessWindow++;
                         continue;
                     }
                     if ($s === '0x0' || $s === '0') {
                         $receiptRevert++;
+                        $inWindow && $receiptRevertWindow++;
                         continue;
                     }
                 }
                 if (is_int($status)) {
                     $status === 1 ? $receiptSuccess++ : $receiptRevert++;
+                    $inWindow && ($status === 1 ? $receiptSuccessWindow++ : $receiptRevertWindow++);
                     continue;
                 }
 
                 $receiptUnknown++;
+                $inWindow && $receiptUnknownWindow++;
             }
         }
 
         ksort($sigByKind);
+        ksort($sigByKindWindow);
         ksort($txByMethod);
+        ksort($txByMethodWindow);
 
-        return [
+        $out = [
             'dir' => $outboxDir,
             'sig' => [
                 'pending' => $sigPending,
@@ -588,6 +641,35 @@ final class SoakReportGenerator
                 'unknown' => $receiptUnknown,
             ],
         ];
+
+        if ($windowStartUnix !== null && $windowEndUnix !== null && $windowStartUnix <= $windowEndUnix) {
+            $out['sig_window'] = [
+                'pending' => $sigPendingWindow,
+                'processing' => $sigProcessingWindow,
+                'signed' => $sigSignedWindow,
+                'failed' => $sigFailedWindow,
+                'total' => $sigPendingWindow + $sigProcessingWindow + $sigSignedWindow + $sigFailedWindow,
+                'by_kind' => $sigByKindWindow,
+            ];
+            $out['tx_window'] = [
+                'pending' => $txPendingWindow,
+                'processing' => $txProcessingWindow,
+                'sent' => $txSentWindow,
+                'failed' => $txFailedWindow,
+                'total' => $txPendingWindow + $txProcessingWindow + $txSentWindow + $txFailedWindow,
+                'by_method' => $txByMethodWindow,
+            ];
+            $out['receipts_window'] = [
+                'total' => $receiptTotalWindow,
+                'dry_run' => $receiptDryRunWindow,
+                'pending' => $receiptPendingWindow,
+                'success' => $receiptSuccessWindow,
+                'revert' => $receiptRevertWindow,
+                'unknown' => $receiptUnknownWindow,
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -794,6 +876,11 @@ final class SoakReportGenerator
             if (is_string($outboxErr) && trim($outboxErr) !== '' && !str_contains($outboxErr, "\0")) {
                 $lines[] = '- WARN: unable to scan tx-outbox: `' . trim($outboxErr) . '`';
             }
+            if (is_array($outbox['sig_window'] ?? null) || is_array($outbox['tx_window'] ?? null) || is_array($outbox['receipts_window'] ?? null)) {
+                $lines[] = '- Note: totals are current on-disk counts; `created during window` counts are limited to the event window in this report.';
+            } else {
+                $lines[] = '- Note: counts are current on-disk totals and may include items created outside the event window.';
+            }
 
             $sig = $outbox['sig'] ?? null;
             if (is_array($sig)) {
@@ -801,6 +888,10 @@ final class SoakReportGenerator
                 $lines[] = '### Signature requests (`sig.*.json`)';
                 $lines[] = '';
                 $lines[] = '- total: `' . ($sig['total'] ?? 0) . '` (pending: `' . ($sig['pending'] ?? 0) . '`, signed: `' . ($sig['signed'] ?? 0) . '`, failed: `' . ($sig['failed'] ?? 0) . '`, processing: `' . ($sig['processing'] ?? 0) . '`)';
+                $sigWindow = $outbox['sig_window'] ?? null;
+                if (is_array($sigWindow)) {
+                    $lines[] = '- created during window: `' . ($sigWindow['total'] ?? 0) . '` (pending: `' . ($sigWindow['pending'] ?? 0) . '`, signed: `' . ($sigWindow['signed'] ?? 0) . '`, failed: `' . ($sigWindow['failed'] ?? 0) . '`, processing: `' . ($sigWindow['processing'] ?? 0) . '`)';
+                }
                 $byKind = $sig['by_kind'] ?? null;
                 if (is_array($byKind) && $byKind !== []) {
                     $lines[] = '';
@@ -821,6 +912,10 @@ final class SoakReportGenerator
                 $lines[] = '### Tx intents (`tx.*.json`)';
                 $lines[] = '';
                 $lines[] = '- total: `' . ($tx['total'] ?? 0) . '` (pending: `' . ($tx['pending'] ?? 0) . '`, sent: `' . ($tx['sent'] ?? 0) . '`, failed: `' . ($tx['failed'] ?? 0) . '`, processing: `' . ($tx['processing'] ?? 0) . '`)';
+                $txWindow = $outbox['tx_window'] ?? null;
+                if (is_array($txWindow)) {
+                    $lines[] = '- created during window: `' . ($txWindow['total'] ?? 0) . '` (pending: `' . ($txWindow['pending'] ?? 0) . '`, sent: `' . ($txWindow['sent'] ?? 0) . '`, failed: `' . ($txWindow['failed'] ?? 0) . '`, processing: `' . ($txWindow['processing'] ?? 0) . '`)';
+                }
                 $byMethod = $tx['by_method'] ?? null;
                 if (is_array($byMethod) && $byMethod !== []) {
                     $lines[] = '';
@@ -841,6 +936,10 @@ final class SoakReportGenerator
                 $lines[] = '### Broadcast receipts (`sent/*.receipt.json`)';
                 $lines[] = '';
                 $lines[] = '- total: `' . ($receipts['total'] ?? 0) . '` (success: `' . ($receipts['success'] ?? 0) . '`, revert: `' . ($receipts['revert'] ?? 0) . '`, pending: `' . ($receipts['pending'] ?? 0) . '`, dry_run: `' . ($receipts['dry_run'] ?? 0) . '`, unknown: `' . ($receipts['unknown'] ?? 0) . '`)';
+                $receiptsWindow = $outbox['receipts_window'] ?? null;
+                if (is_array($receiptsWindow)) {
+                    $lines[] = '- created during window: `' . ($receiptsWindow['total'] ?? 0) . '` (success: `' . ($receiptsWindow['success'] ?? 0) . '`, revert: `' . ($receiptsWindow['revert'] ?? 0) . '`, pending: `' . ($receiptsWindow['pending'] ?? 0) . '`, dry_run: `' . ($receiptsWindow['dry_run'] ?? 0) . '`, unknown: `' . ($receiptsWindow['unknown'] ?? 0) . '`)';
+                }
             }
         }
 
@@ -861,6 +960,49 @@ final class SoakReportGenerator
 
         $p = ($num / $den) * 100;
         return number_format($p, 2) . '%';
+    }
+
+    private static function parseUnixFromIsoTs(mixed $ts): ?int
+    {
+        if (!is_string($ts)) {
+            return null;
+        }
+        $ts = trim($ts);
+        if ($ts === '' || str_contains($ts, "\0")) {
+            return null;
+        }
+        $u = strtotime($ts);
+        return is_int($u) ? $u : null;
+    }
+
+    /**
+     * @param array<string,mixed>|null $payload
+     */
+    private static function parseCreatedAtUnix(?array $payload): ?int
+    {
+        if (!is_array($payload)) {
+            return null;
+        }
+        $raw = $payload['created_at'] ?? null;
+        return self::parseUnixFromIsoTs($raw);
+    }
+
+    private static function tryFileMtime(string $path): ?int
+    {
+        clearstatcache(true, $path);
+        $t = @filemtime($path);
+        return is_int($t) ? $t : null;
+    }
+
+    private static function isInWindow(?int $tsUnix, ?int $windowStartUnix, ?int $windowEndUnix): bool
+    {
+        if ($tsUnix === null || $windowStartUnix === null || $windowEndUnix === null) {
+            return false;
+        }
+        if ($windowStartUnix > $windowEndUnix) {
+            return false;
+        }
+        return $tsUnix >= $windowStartUnix && $tsUnix <= $windowEndUnix;
     }
 
     /**
