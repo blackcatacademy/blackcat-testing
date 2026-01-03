@@ -20,9 +20,12 @@ RUN set -eux; \
   apt-get install -y --no-install-recommends libcurl4-openssl-dev; \
   docker-php-ext-install pdo_mysql; \
   docker-php-ext-install curl; \
+  # Required for SO_PEERCRED peer identity checks on the secrets-agent UNIX socket.
+  docker-php-ext-install sockets; \
   rm -rf /var/lib/apt/lists/*; \
   php -m | grep -E '^pdo_mysql$'; \
   php -m | grep -E '^curl$'; \
+  php -m | grep -E '^sockets$'; \
   php -m | grep -E '^sodium$'
 
 WORKDIR /srv/blackcat
