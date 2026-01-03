@@ -1,0 +1,13 @@
+services:
+  app:
+    environment:
+      # In warn mode, "unexpected_file" does not flip trusted_now (extra files are tolerated).
+      # Use a hash-changing tamper that is enforced in both warn+strict modes.
+      BLACKCAT_TESTING_TAMPER_AFTER_SEC: "40"
+      BLACKCAT_TESTING_TAMPER_KIND: "modify_file"
+
+  attacker:
+    environment:
+      TAMPER_AFTER_SEC: "40"
+      EXPECT_TRUST_OK_AT_START: "1"
+      EXPECT_TRUST_FAIL_AFTER_TAMPER: "1"

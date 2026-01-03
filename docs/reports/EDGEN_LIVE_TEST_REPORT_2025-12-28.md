@@ -9,6 +9,9 @@ This report documents live-chain integration testing on **Edgen Chain** (EVM, `c
 
 No private keys are included; only public addresses and transaction hashes.
 
+> Note (2026-01-03): The harness defaults have since been tuned for demo stability (`BLACKCAT_TRUST_ENFORCEMENT=warn`,
+> `BLACKCAT_TESTING_TAMPER_AFTER_SEC=0`). This report was produced with strict mode + explicit tamper scenarios enabled.
+
 ## Chain / Contracts
 
 - Network: Edgen Chain (`chain_id=4207`)
@@ -56,7 +59,7 @@ All scenario logs are stored as:
 
 ### 1) Baseline integrity tamper (unexpected file)
 
-- Compose: `docker-compose.yml` (default tamper: `unexpected_file` at 40s)
+- Compose: `docker-compose.yml` (strict mode) + `BLACKCAT_TESTING_TAMPER_AFTER_SEC=40`, `BLACKCAT_TESTING_TAMPER_KIND=unexpected_file`
 - Expected: trust OK at start, then fail after tamper (fail-closed)
 - Result: PASS
 - Run ID: `20251228T001950Z.622038241d5a`

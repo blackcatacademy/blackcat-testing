@@ -115,7 +115,7 @@ Compatibility note:
 3. While `trusted_now=true`, show:
    - `DB write` works
    - `Crypto roundtrip` works
-4. Wait for the scheduled tamper (default `40s`) and observe:
+4. Optional: run a **tamper scenario** (fail-closed) and observe:
    - `trusted_now` flips to `false`
    - `write_allowed=false` immediately blocks writes
    - errors show *why* it failed (transparent, auditable)
@@ -126,22 +126,20 @@ Tip (for partners): open `http://localhost:8088/presentation.html` and press **R
 It will:
 - show the unprotected leak endpoints,
 - run the protected probes,
-- then wait for the tamper-triggered trust flip and refresh the tx-outbox automatically.
+- and (only if a tamper scenario is armed) wait for a trust flip and refresh the tx-outbox automatically.
 
 ## 3) Run scenarios (live tamper)
 
 Scenarios are just compose overrides; see `docs/SCENARIOS.md`.
 
-### A) Filesystem tamper (default)
+### A) Filesystem tamper (override)
 
-The default stack schedules a tamper after `BLACKCAT_TESTING_TAMPER_AFTER_SEC` (default `40s`).
-You should see:
-- `trusted_now=true` initially
-- after tamper: `trusted_now=false`, writes blocked, and errors visible on the dashboard
+By default, the presentation stack runs in a **trusted baseline** mode (no tamper).
+To demo fail-closed behavior, use the scenario overrides in `docs/SCENARIOS.md` (recommended: `docker-compose.config-tamper.yml`).
 
 Note:
-- In hardened read-only rootfs mode, “unexpected file in app root” tamper may be blocked by the filesystem.
-  Use `BLACKCAT_TESTING_TAMPER_KIND=modify_config` or `modify_manifest` for a reliable demo.
+- In `warn` enforcement, `tamper_kind=unexpected_file` will not flip `trusted_now` (extra files are tolerated).
+  Use `tamper_kind=modify_config` or `modify_manifest` for a reliable demo, or enable `strict` with quorum ≥ 2.
 
 ### B) RPC outage → stale reads
 

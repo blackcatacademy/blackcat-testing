@@ -4,20 +4,26 @@
 
 This file lists the currently supported harness scenarios.
 
-## A) Filesystem tamper (default)
+## A) Filesystem tamper (override)
 
 Uses:
 - `BLACKCAT_TESTING_TAMPER_AFTER_SEC` (in `app`)
 - `EXPECT_TRUST_FAIL_AFTER_TAMPER=1` (in `attacker`)
 
+Override file:
+- `docker/minimal-prod/docker-compose.filesystem-tamper.yml`
+
 Expected outcome:
 - before tamper: `trusted_now=true`
-- after tamper: `trusted_now=false`, requests start failing (fail-closed)
+- after tamper: `trusted_now=false`, sensitive endpoints start failing (fail-closed)
 
 Run:
 
 ```bash
-docker compose -f blackcat-testing/docker/minimal-prod/docker-compose.yml up --build --abort-on-container-exit attacker
+docker compose \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \
+  -f blackcat-testing/docker/minimal-prod/docker-compose.filesystem-tamper.yml \
+  up --build --abort-on-container-exit attacker
 ```
 
 ## B) RPC outage → stale reads (override)

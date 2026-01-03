@@ -93,7 +93,8 @@ services:
       TARGET_BASE_URL: "${TARGET_BASE_URL:-http://app:8080}"
       ATTACK_DURATION_SEC: "${ATTACK_DURATION_SEC:-120}"
       ATTACK_RPS: "${ATTACK_RPS:-5}"
-      TAMPER_AFTER_SEC: "${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-40}"
+      # Tamper is disabled by default (enable explicitly via scenario overrides).
+      TAMPER_AFTER_SEC: "0"
       ATTACK_LOG_DIR: "${ATTACK_LOG_DIR:-/var/log/blackcat-testing}"
       ATTACK_LOG_EVERY_SEC: "${ATTACK_LOG_EVERY_SEC:-1}"
       ATTACK_READY_TIMEOUT_SEC: "${ATTACK_READY_TIMEOUT_SEC:-60}"
