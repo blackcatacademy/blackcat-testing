@@ -875,7 +875,7 @@
                   <tr>
                     <th>Check</th>
                     <th>Unprotected (expected: vulnerable)</th>
-                    <th>Protected (expected: blocked)</th>
+                    <th>Protected (expected: enforced)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1466,7 +1466,7 @@
         const t = target === "secure" ? "protected" : "unprotected";
         if (attackId === "db_write") {
           if (target === "secure") {
-            if (status === 200) return "OK: gated write allowed (trusted).";
+            if (status === 200) return "ALLOWED (trusted): gated write succeeded. Run a tamper scenario to see fail-closed.";
             if (status === 403) return "BLOCKED: guard denied (expected when untrusted or boundary denies).";
             if (status === 503) return "FAIL-CLOSED: TrustKernel blocked write due to trust issues.";
             return "Unexpected status: check /health + logs.";
@@ -2122,7 +2122,7 @@
 
         try {
           const r = await probeInsecureLeakKey();
-          setBadge("bInsecureKey", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (key readable)" : "Unexpected");
+          setBadge("bInsecureKey", r.ok ? "bad" : "warn", r.ok ? "Vulnerable (key readable)" : "Unexpected (blocked)");
           pitchState.probes.insecure_key_leak = r.ok === true;
         } catch (e) {
           setBadge("bInsecureKey", "bad", "Fetch failed");
@@ -2131,7 +2131,7 @@
 
         try {
           const r = await probeInsecureLeakDb();
-          setBadge("bInsecureDbCreds", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (db creds exposed)" : "Unexpected");
+          setBadge("bInsecureDbCreds", r.ok ? "bad" : "warn", r.ok ? "Vulnerable (db creds exposed)" : "Unexpected (blocked)");
           pitchState.probes.insecure_db_leak = r.ok === true;
         } catch (e) {
           setBadge("bInsecureDbCreds", "bad", "Fetch failed");
@@ -2140,7 +2140,7 @@
 
         try {
           const r = await probeInsecurePdoBypass();
-          setBadge("bInsecurePdo", r.ok ? "ok" : "bad", r.ok ? "Vulnerable (raw PDO ok)" : "Unexpected");
+          setBadge("bInsecurePdo", r.ok ? "bad" : "warn", r.ok ? "Vulnerable (raw PDO ok)" : "Unexpected (blocked)");
           pitchState.probes.insecure_pdo = r.ok === true;
         } catch (e) {
           setBadge("bInsecurePdo", "bad", "Fetch failed");
@@ -2184,14 +2184,18 @@
         // Control target: DB write is allowed (raw PDO) and is expected to succeed.
         try {
           const { res } = await fetchAny(metaState.insecureBase + "/db/write", { method: "POST" }, 8000);
-          setBadge("bInsecureWrite", res.status === 200 ? "ok" : "bad", res.status === 200 ? "Vulnerable (write ok)" : "Unexpected (" + res.status + ")");
+          setBadge(
+            "bInsecureWrite",
+            res.status === 200 ? "bad" : "warn",
+            res.status === 200 ? "Vulnerable (attacker write ok)" : "Unexpected (" + res.status + ")"
+          );
         } catch (e) {
           setBadge("bInsecureWrite", "bad", "Fetch failed");
         }
 
         try {
           const r = await probeSecureOk("/db/write", "POST");
-          setBadge("bSecureWrite", r.ok ? "ok" : "warn", r.ok ? "OK (when allowed)" : "Denied (when untrusted)");
+          setBadge("bSecureWrite", r.ok ? "ok" : "warn", r.ok ? "Allowed (trusted)" : "Blocked (untrusted)");
         } catch (e) {
           setBadge("bSecureWrite", "warn", "Denied/failed");
         }
@@ -2263,7 +2267,7 @@
                 kind = status === 403 || status === 404 ? "ok" : status === 200 ? "bad" : "warn";
               }
             } else {
-              kind = status === 200 ? "ok" : status === 405 ? "warn" : "bad";
+              kind = status === 200 ? "bad" : "warn";
             }
             setBadge(def.badge, kind, status + " (" + msg.replace(/[.]+$/, "") + ")");
           }
