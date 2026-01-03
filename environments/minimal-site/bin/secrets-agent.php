@@ -268,13 +268,21 @@ function peerInfo(mixed $conn): array
         function_exists('socket_import_stream')
         && function_exists('socket_get_option')
         && defined('SOL_SOCKET')
-        && defined('SO_PEERCRED')
     ) {
+        $optPeercred = null;
+        if (defined('SO_PEERCRED')) {
+            $optPeercred = (int) SO_PEERCRED;
+        } elseif (defined('PHP_OS_FAMILY') && PHP_OS_FAMILY === 'Linux') {
+            // On Linux, SO_PEERCRED is typically 17. Some PHP builds (including Debian images)
+            // ship the sockets extension without exposing the constant.
+            $optPeercred = 17;
+        }
+
         /** @var \Socket|false $sock */
         $sock = @socket_import_stream($conn);
-        if ($sock !== false) {
+        if ($sock !== false && $optPeercred !== null) {
             /** @var mixed $cred */
-            $cred = @socket_get_option($sock, SOL_SOCKET, SO_PEERCRED);
+            $cred = @socket_get_option($sock, SOL_SOCKET, $optPeercred);
             if (is_array($cred)) {
                 $uid = isset($cred['uid']) && is_int($cred['uid']) ? $cred['uid'] : null;
                 $gid = isset($cred['gid']) && is_int($cred['gid']) ? $cred['gid'] : null;
