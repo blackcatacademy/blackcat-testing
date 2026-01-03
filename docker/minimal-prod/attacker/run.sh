@@ -182,10 +182,11 @@ while true; do
   code_db_read="$(req_code GET /db/read)"
   code_db_write="$(req_code POST /db/write)"
   code_bypass_pdo="$(req_code GET /bypass/pdo)"
-  code_bypass_keys="000"
-  code_bypass_db_creds="000"
-  code_bypass_agent="000"
-  code_crypto_roundtrip="000"
+  # Note: -1 means "skipped" (not called on this tick); 0 means "curl failed/timeout" (000).
+  code_bypass_keys="-1"
+  code_bypass_db_creds="-1"
+  code_bypass_agent="-1"
+  code_crypto_roundtrip="-1"
   if (( elapsed % 5 == 0 )); then
     code_bypass_keys="$(req_code GET /bypass/keys)"
     code_bypass_db_creds="$(req_code GET /bypass/db-creds)"

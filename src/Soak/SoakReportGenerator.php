@@ -743,9 +743,28 @@ final class SoakReportGenerator
             $lines[] = '| Endpoint | Codes |';
             $lines[] = '|---|---|';
             foreach ($httpCodes as $name => $codes) {
+                $hasNonSkipped = false;
+                foreach ($codes as $code => $count) {
+                    if (!is_int($code) || !is_int($count)) {
+                        continue;
+                    }
+                    if ($code !== -1) {
+                        $hasNonSkipped = true;
+                        break;
+                    }
+                }
+
                 $parts = [];
                 foreach ($codes as $code => $count) {
-                    $parts[] = $code . '×' . $count;
+                    if (!is_int($code) || !is_int($count)) {
+                        continue;
+                    }
+                    if ($code === -1 && $hasNonSkipped) {
+                        continue;
+                    }
+
+                    $label = $code === -1 ? 'skipped' : (string) $code;
+                    $parts[] = $label . '×' . $count;
                 }
                 $lines[] = '| `' . $name . '` | ' . implode(', ', $parts) . ' |';
             }
