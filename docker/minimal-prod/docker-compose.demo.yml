@@ -2,9 +2,11 @@ services:
   app:
     environment:
       BLACKCAT_TESTING_INSECURE_URL: "${BLACKCAT_TESTING_INSECURE_URL:-http://localhost:8089/}"
-      BLACKCAT_TESTING_DEMO_WALLETS_FILE: "${BLACKCAT_TESTING_DEMO_WALLETS_FILE:-/etc/blackcat/demo/demo.wallets.public.json}"
+      BLACKCAT_TESTING_DEMO_WALLETS_FILE: "${BLACKCAT_TESTING_DEMO_WALLETS_FILE:-/etc/blackcat/demo-public/demo.wallets.public.json}"
     volumes:
-      - ../../var/demo/public:/etc/blackcat/demo:ro
+      # Public demo wallet addresses (NO private keys). Mounted read-only.
+      # Keep /etc/blackcat/demo writable for demo runtime state (e.g., demo.state.json).
+      - ../../var/demo/public:/etc/blackcat/demo-public:ro
       # Presentation-only: expose attacker harness logs/reports inside open_basedir-safe roots.
       - ../../var/harness/minimal-prod/logs:/var/lib/blackcat/harness/logs:ro
       - ../../var/harness/minimal-prod/reports:/var/lib/blackcat/harness/reports
