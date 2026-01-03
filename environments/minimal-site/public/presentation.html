@@ -482,7 +482,7 @@
                 </div>
               </div>
               <div class="muted">
-                Tip: press <strong>Run guided demo</strong> and watch the nodes light up automatically when the scheduled tamper triggers.
+                Tip: press <strong>Run guided demo</strong>. If a tamper scenario is armed, you will see a trust flip; otherwise the demo stays in “trusted baseline” mode (recommended for investor viewing).
               </div>
             </div>
           </div>
@@ -494,6 +494,7 @@
               <span id="dotTrust" class="dot"></span>
               <span class="pill"><strong id="trustTitle">Loading…</strong></span>
               <span class="pill">enforcement: <strong id="enf">?</strong></span>
+              <span class="pill">tamper: <strong id="tamperInfo">?</strong></span>
               <span class="pill">rpc_ok: <strong id="rpcOk">?</strong></span>
               <span class="pill">read_allowed: <strong id="readAllowed">?</strong></span>
               <span class="pill">write_allowed: <strong id="writeAllowed">?</strong></span>
@@ -689,6 +690,7 @@
         chainId: null,
         controller: null,
         tamperAfterSec: null,
+        tamperKind: null,
       };
 
       const pitchState = {
@@ -839,9 +841,12 @@
           metaState.chainId = typeof json.chain_id === "number" ? json.chain_id : null;
           metaState.controller = typeof json.instance_controller === "string" ? json.instance_controller : null;
           metaState.explorerBase = typeof json.explorer_base_url === "string" ? json.explorer_base_url : null;
-          metaState.tamperAfterSec = typeof json.demo === "object" && json.demo && typeof json.demo.tamper_after_sec === "number"
-            ? json.demo.tamper_after_sec
-            : null;
+          metaState.tamperAfterSec =
+            typeof json.demo === "object" && json.demo && typeof json.demo.tamper_after_sec === "number" ? json.demo.tamper_after_sec : null;
+          metaState.tamperKind =
+            typeof json.demo === "object" && json.demo && typeof json.demo.tamper_kind === "string" && json.demo.tamper_kind.trim() !== ""
+              ? json.demo.tamper_kind.trim()
+              : null;
 
           el("lnkInsecure").href = metaState.insecureBase + "/";
           el("insecureSrc").textContent = metaState.insecureBase + "/";
@@ -860,6 +865,19 @@
           } else {
             el("controllerLink").textContent = "?";
             el("controllerLink").href = "#";
+          }
+
+          const ti = el("tamperInfo");
+          if (ti) {
+            const after = metaState.tamperAfterSec;
+            const kind = metaState.tamperKind;
+            if (typeof after === "number" && after > 0) {
+              ti.textContent = after + "s / " + (kind || "unknown");
+            } else if (typeof after === "number" && after === 0) {
+              ti.textContent = "disabled";
+            } else {
+              ti.textContent = "unknown";
+            }
           }
         } catch (e) {
           metaState.insecureBase = deriveInsecureBaseFromHost();
@@ -1197,20 +1215,37 @@
           await probeSecureOk("/db/read", "GET").then((r) => log("[DEMO] protected /db/read -> " + r.detail.status));
           await probeSecureOk("/crypto/roundtrip", "POST").then((r) => log("[DEMO] protected /crypto/roundtrip -> " + r.detail.status));
 
-          log("[DEMO] Step 6/6: wait for trust to flip on tamper (watch timeline + outbox)");
-          const waitUntil = Date.now() + 90000;
-          let lastTrusted = null;
-          while (Date.now() < waitUntil) {
-            const { json } = await fetchJson("/health");
-            const t = json && json.trust ? json.trust : null;
-            const trusted = t && t.trusted_now === true;
-            if (lastTrusted !== null && lastTrusted !== trusted) {
-              log("[DEMO] trusted_now changed: " + (lastTrusted ? "true" : "false") + " -> " + (trusted ? "true" : "false"));
-              await refreshOutbox();
-              break;
+          log("[DEMO] Step 6/6: trust flip demo (only if a tamper scenario is armed)");
+          const after = metaState.tamperAfterSec;
+          const kind = metaState.tamperKind;
+
+          const { json: h0 } = await fetchJson("/health", 12000);
+          const t0 = h0 && h0.trust ? h0.trust : null;
+          const enf = t0 && typeof t0.enforcement === "string" ? t0.enforcement : "unknown";
+
+          if (!(typeof after === "number") || after <= 0) {
+            log(
+              "[DEMO] No tamper scenario armed (tamper_after_sec is disabled). This run should remain trusted. To demo fail-closed: restart with BLACKCAT_TESTING_TAMPER_AFTER_SEC=40 and BLACKCAT_TESTING_TAMPER_KIND=modify_config (or modify_manifest)."
+            );
+          } else if (kind === "unexpected_file" && enf === "warn") {
+            log(
+              "[DEMO] NOTE: enforcement=warn + tamper_kind=unexpected_file will NOT flip trusted_now (unexpected files are tolerated in warn mode). Use tamper_kind=modify_config or modify_manifest, or enable strict with quorum>=2."
+            );
+          } else {
+            const waitUntil = Date.now() + 90000;
+            let lastTrusted = null;
+            while (Date.now() < waitUntil) {
+              const { json } = await fetchJson("/health", 12000);
+              const t = json && json.trust ? json.trust : null;
+              const trusted = t && t.trusted_now === true;
+              if (lastTrusted !== null && lastTrusted !== trusted) {
+                log("[DEMO] trusted_now changed: " + (lastTrusted ? "true" : "false") + " -> " + (trusted ? "true" : "false"));
+                await refreshOutbox();
+                break;
+              }
+              lastTrusted = trusted;
+              await new Promise((r) => setTimeout(r, 1000));
             }
-            lastTrusted = trusted;
-            await new Promise((r) => setTimeout(r, 1000));
           }
 
           log("[DEMO] Done. Open the technical dashboard for low-level details (/demo/upgrade-info etc).");

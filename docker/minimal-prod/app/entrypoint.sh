@@ -616,6 +616,82 @@ if [ -f "$TAMPER_MARKER" ]; then
   fi
 fi
 
+# Publish demo-only state for the UI (do not rely on getenv() inside the web runtime).
+# This file contains no secrets; it only describes which simulations are armed.
+DEMO_STATE_DIR="/etc/blackcat/demo"
+DEMO_STATE_PATH="${DEMO_STATE_DIR}/demo.state.json"
+mkdir -p "$DEMO_STATE_DIR" || true
+chmod 0750 "$DEMO_STATE_DIR" || true
+chgrp "$DEMO_STATE_DIR" www-data >/dev/null 2>&1 || true
+
+export BLACKCAT_DEMO_STATE_TAMPER_AFTER_SEC="$TAMPER_AFTER_SEC"
+export BLACKCAT_DEMO_STATE_TAMPER_KIND="$TAMPER_KIND"
+export BLACKCAT_DEMO_STATE_TAMPER_WAIT_FOR_TRUST_OK="$TAMPER_WAIT_FOR_TRUST_OK"
+export BLACKCAT_DEMO_STATE_TAMPER_WAIT_MAX_SEC="$TAMPER_WAIT_MAX_SEC"
+export BLACKCAT_DEMO_STATE_TAMPER_MARKER_PATH="$TAMPER_MARKER"
+export BLACKCAT_DEMO_STATE_TAMPER_FILE_PATH="$TAMPER_FILE"
+export BLACKCAT_DEMO_STATE_RPC_SABOTAGE_AFTER_SEC="$RPC_SABOTAGE_AFTER_SEC"
+export BLACKCAT_DEMO_STATE_RPC_PROXY_SABOTAGE_AFTER_SEC="$RPC_PROXY_SABOTAGE_AFTER_SEC"
+
+php -r '
+  $dir = "/etc/blackcat/demo";
+  $path = $dir . "/demo.state.json";
+
+  $afterRaw = getenv("BLACKCAT_DEMO_STATE_TAMPER_AFTER_SEC");
+  $after = is_string($afterRaw) && ctype_digit(trim($afterRaw)) ? (int) trim($afterRaw) : 0;
+
+  $kind = getenv("BLACKCAT_DEMO_STATE_TAMPER_KIND");
+  $kind = is_string($kind) && trim($kind) !== "" ? trim($kind) : "unexpected_file";
+
+  $waitRaw = getenv("BLACKCAT_DEMO_STATE_TAMPER_WAIT_FOR_TRUST_OK");
+  $waitForTrustOk = $waitRaw === false ? true : ($waitRaw !== "0");
+
+  $waitMaxRaw = getenv("BLACKCAT_DEMO_STATE_TAMPER_WAIT_MAX_SEC");
+  $waitMax = is_string($waitMaxRaw) && ctype_digit(trim($waitMaxRaw)) ? (int) trim($waitMaxRaw) : 120;
+
+  $marker = getenv("BLACKCAT_DEMO_STATE_TAMPER_MARKER_PATH");
+  $marker = is_string($marker) && $marker !== "" ? $marker : "/etc/blackcat/.blackcat_testing_tamper_done";
+
+  $tamperFile = getenv("BLACKCAT_DEMO_STATE_TAMPER_FILE_PATH");
+  $tamperFile = is_string($tamperFile) && $tamperFile !== "" ? $tamperFile : "/srv/blackcat/site/public/.bc_tamper.txt";
+
+  $rpcSabRaw = getenv("BLACKCAT_DEMO_STATE_RPC_SABOTAGE_AFTER_SEC");
+  $rpcSab = is_string($rpcSabRaw) && ctype_digit(trim($rpcSabRaw)) ? (int) trim($rpcSabRaw) : 0;
+
+  $rpcProxySabRaw = getenv("BLACKCAT_DEMO_STATE_RPC_PROXY_SABOTAGE_AFTER_SEC");
+  $rpcProxySab = is_string($rpcProxySabRaw) && ctype_digit(trim($rpcProxySabRaw)) ? (int) trim($rpcProxySabRaw) : 0;
+
+  $payload = [
+    "ok" => true,
+    "schema_version" => 1,
+    "generated_at" => gmdate("c"),
+    "tamper" => [
+      "after_sec" => $after,
+      "kind" => $kind,
+      "wait_for_trust_ok" => $waitForTrustOk,
+      "wait_max_sec" => $waitMax,
+      "marker_path" => $marker,
+      "marker_exists" => is_file($marker),
+      "file_path" => $tamperFile,
+      "file_exists" => is_file($tamperFile),
+    ],
+    "rpc_sabotage_after_sec" => $rpcSab,
+    "rpc_proxy_sabotage_after_sec" => $rpcProxySab,
+  ];
+
+  if (!is_dir($dir) || is_link($dir)) {
+    exit(0);
+  }
+
+  $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+  if (!is_string($json)) {
+    exit(0);
+  }
+  @file_put_contents($path, $json . "\n");
+  @chmod($path, 0640);
+  @chgrp($path, "www-data");
+' || true
+
 if [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then
   (
     if [ "$TAMPER_WAIT_FOR_TRUST_OK" = "1" ]; then

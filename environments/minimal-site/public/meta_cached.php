@@ -44,6 +44,66 @@ $endpoints = $getNested($cfg, ['trust', 'web3', 'rpc_endpoints']);
 $quorum = $getNested($cfg, ['trust', 'web3', 'rpc_quorum']);
 $controller = $getNested($cfg, ['trust', 'web3', 'contracts', 'instance_controller']);
 
+$demoStatePath = '/etc/blackcat/demo/demo.state.json';
+$demoState = null;
+if (is_file($demoStatePath) && !is_link($demoStatePath) && is_readable($demoStatePath)) {
+    $raw = @file_get_contents($demoStatePath);
+    if (is_string($raw) && trim($raw) !== '') {
+        /** @var mixed $decoded */
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $demoState = $decoded;
+        }
+    }
+}
+
+$insecureUrlRaw = getenv('BLACKCAT_TESTING_INSECURE_URL');
+$insecureUrl = is_string($insecureUrlRaw) && trim($insecureUrlRaw) !== '' ? trim($insecureUrlRaw) : 'http://localhost:8089/';
+
+$demo = [
+    'tamper_after_sec' => null,
+    'tamper_kind' => null,
+    'tamper_marker_exists' => null,
+    'rpc_sabotage_after_sec' => null,
+    'rpc_proxy_sabotage_after_sec' => null,
+];
+
+if (is_array($demoState)) {
+    $tamper = $demoState['tamper'] ?? null;
+    if (is_array($tamper)) {
+        $after = $tamper['after_sec'] ?? null;
+        if (is_int($after)) {
+            $demo['tamper_after_sec'] = $after;
+        } elseif (is_string($after) && ctype_digit(trim($after))) {
+            $demo['tamper_after_sec'] = (int) trim($after);
+        }
+
+        $kind = $tamper['kind'] ?? null;
+        if (is_string($kind) && trim($kind) !== '') {
+            $demo['tamper_kind'] = trim($kind);
+        }
+
+        $markerExists = $tamper['marker_exists'] ?? null;
+        if (is_bool($markerExists)) {
+            $demo['tamper_marker_exists'] = $markerExists;
+        }
+    }
+
+    $rpcSab = $demoState['rpc_sabotage_after_sec'] ?? null;
+    if (is_int($rpcSab)) {
+        $demo['rpc_sabotage_after_sec'] = $rpcSab;
+    } elseif (is_string($rpcSab) && ctype_digit(trim($rpcSab))) {
+        $demo['rpc_sabotage_after_sec'] = (int) trim($rpcSab);
+    }
+
+    $rpcProxySab = $demoState['rpc_proxy_sabotage_after_sec'] ?? null;
+    if (is_int($rpcProxySab)) {
+        $demo['rpc_proxy_sabotage_after_sec'] = $rpcProxySab;
+    } elseif (is_string($rpcProxySab) && ctype_digit(trim($rpcProxySab))) {
+        $demo['rpc_proxy_sabotage_after_sec'] = (int) trim($rpcProxySab);
+    }
+}
+
 $meta = [
     'ok' => true,
     'chain_id' => is_int($chainId) ? $chainId : (is_string($chainId) && ctype_digit(trim($chainId)) ? (int) trim($chainId) : null),
@@ -51,13 +111,8 @@ $meta = [
     'rpc_quorum' => is_int($quorum) ? $quorum : (is_string($quorum) && ctype_digit(trim($quorum)) ? (int) trim($quorum) : null),
     'instance_controller' => is_string($controller) && trim($controller) !== '' ? trim($controller) : null,
     'explorer_base_url' => null,
-    'insecure_demo_url' => getenv('BLACKCAT_TESTING_INSECURE_URL') ?: 'http://localhost:8089/',
-    'demo' => [
-        'tamper_after_sec' => getenv('BLACKCAT_TESTING_TAMPER_AFTER_SEC') ?: null,
-        'tamper_kind' => getenv('BLACKCAT_TESTING_TAMPER_KIND') ?: null,
-        'rpc_sabotage_after_sec' => getenv('BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC') ?: null,
-        'rpc_proxy_sabotage_after_sec' => getenv('BLACKCAT_TESTING_RPC_PROXY_SABOTAGE_AFTER_SEC') ?: null,
-    ],
+    'insecure_demo_url' => $insecureUrl,
+    'demo' => $demo,
 ];
 
 if ($meta['chain_id'] === 4207) {
@@ -68,4 +123,3 @@ http_response_code(200);
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 echo json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n";
-
