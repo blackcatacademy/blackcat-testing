@@ -83,7 +83,7 @@ services:
 
   runner:
     image: minimal-prod-app
-    entrypoint: ["php", "/srv/blackcat/site/bin/trust-runner.php"]
+    entrypoint: ["/runner-entrypoint.sh"]
     environment:
       BLACKCAT_TRUST_RUNNER_INTERVAL_SEC: "${BLACKCAT_TRUST_RUNNER_INTERVAL_SEC:-5}"
       BLACKCAT_TRUST_RUNNER_LOG_EVERY_SEC: "${BLACKCAT_TRUST_RUNNER_LOG_EVERY_SEC:-30}"
@@ -95,6 +95,9 @@ services:
       BLACKCAT_TRUST_RUNNER_FS_SCAN_DIRS: "${BLACKCAT_TRUST_RUNNER_FS_SCAN_DIRS:-/var/lib/blackcat,/etc/blackcat}"
       # Optional: queue on-chain incident intents (enabled by default).
       BLACKCAT_TRUST_RUNNER_EMIT_INCIDENTS: "${BLACKCAT_TRUST_RUNNER_EMIT_INCIDENTS:-1}"
+      # Optional: mirror app-side tamper simulations into runner when needed (filesystem tamper in /srv/blackcat).
+      BLACKCAT_TESTING_TAMPER_AFTER_SEC: "${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
+      BLACKCAT_TESTING_TAMPER_KIND: "${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
       # Testing-only: exit runner to simulate crash (enables stale check-in auto-pause demos).
       BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC: "${BLACKCAT_TESTING_RUNNER_EXIT_AFTER_SEC:-0}"
       BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC: "${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"

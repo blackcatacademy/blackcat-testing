@@ -6,6 +6,13 @@ services:
       BLACKCAT_TESTING_TAMPER_AFTER_SEC: "40"
       BLACKCAT_TESTING_TAMPER_KIND: "modify_file"
 
+  runner:
+    environment:
+      # Mirror the same filesystem tamper into the trust-runner container so `/health` flips to untrusted.
+      # (The runner verifies its own /srv/blackcat filesystem, which is not shared with the app container.)
+      BLACKCAT_TESTING_TAMPER_AFTER_SEC: "40"
+      BLACKCAT_TESTING_TAMPER_KIND: "modify_file"
+
   attacker:
     environment:
       TAMPER_AFTER_SEC: "40"

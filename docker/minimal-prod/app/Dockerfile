@@ -49,5 +49,8 @@ COPY --from=builder /workspace/blackcat-config/ /srv/blackcat-config/
 COPY blackcat-testing/docker/minimal-prod/app/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+COPY blackcat-testing/docker/minimal-prod/app/runner-entrypoint.sh /runner-entrypoint.sh
+RUN chmod +x /runner-entrypoint.sh
+
 EXPOSE 8080
 ENTRYPOINT ["/entrypoint.sh"]
