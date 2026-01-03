@@ -739,6 +739,110 @@
         </div>
 
         <div class="card">
+          <div class="row" style="justify-content: space-between">
+            <div class="row">
+              <span class="pill"><strong>Scenario switchboard</strong></span>
+              <span class="pill">copy → run in terminal</span>
+              <span class="pill">startup-armed only</span>
+            </div>
+            <div class="row">
+              <button class="btnPrimary" id="btnCopyResetTrusted">Copy: reset to trusted</button>
+              <button id="btnCopyResetHard">Copy: hard reset (wipe volumes)</button>
+            </div>
+          </div>
+          <div class="muted">
+            These scenarios are <strong>armed at container startup</strong> (Docker env overrides) so the protected web runtime cannot “press a button” to tamper itself.
+            Use the copy buttons and run the commands on your host (WSL/Linux/macOS terminal). Then refresh this page.
+          </div>
+
+          <div class="statsGrid" aria-label="scenario state">
+            <div class="stat">
+              <div class="statLabel">Armed tamper</div>
+              <div id="scTamper" class="statVal warn">loading…</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">RPC endpoints</div>
+              <div id="scRpcEndpoints" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">RPC quorum</div>
+              <div id="scRpcQuorum" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">RPC sabotage</div>
+              <div id="scRpcSabotage" class="statVal">?</div>
+            </div>
+          </div>
+
+          <div class="attackGrid" aria-label="scenario cards">
+            <div class="attackCard">
+              <div class="attackTitle">Filesystem tamper (modify file)</div>
+              <div class="attackDesc">
+                Modifies a file under the integrity root after 40s. Expected: <span class="k">trusted_now</span> flips and sensitive ops fail-closed.
+              </div>
+              <div class="row" style="margin-top: 8px">
+                <button class="btnDanger" id="btnCopyScenarioFsTamper">Copy run command</button>
+              </div>
+            </div>
+
+            <div class="attackCard">
+              <div class="attackTitle">Runtime-config tamper</div>
+              <div class="attackDesc">
+                Mutates <span class="k">/etc/blackcat/config.runtime.json</span> after 40s. Expected: config attestation mismatch → fail-closed.
+              </div>
+              <div class="row" style="margin-top: 8px">
+                <button class="btnDanger" id="btnCopyScenarioConfigTamper">Copy run command</button>
+              </div>
+            </div>
+
+            <div class="attackCard">
+              <div class="attackTitle">Integrity-manifest tamper</div>
+              <div class="attackDesc">
+                Mutates <span class="k">/etc/blackcat/integrity.manifest.json</span>. Expected: integrity verification fails → fail-closed.
+              </div>
+              <div class="row" style="margin-top: 8px">
+                <button class="btnDanger" id="btnCopyScenarioManifestTamper">Copy run command</button>
+              </div>
+            </div>
+
+            <div class="attackCard">
+              <div class="attackTitle">Swap InstanceController (config)</div>
+              <div class="attackDesc">
+                Swaps the controller address in runtime-config. Expected: chain state mismatch / trust breaks immediately.
+              </div>
+              <div class="row" style="margin-top: 8px">
+                <button class="btnDanger" id="btnCopyScenarioControllerSwap">Copy run command</button>
+              </div>
+            </div>
+
+            <div class="attackCard">
+              <div class="attackTitle">RPC outage (stale mode)</div>
+              <div class="attackDesc">
+                Poisons <span class="k">/etc/hosts</span> for <span class="k">rpc.layeredge.io</span> after 30s. Expected: RPC fails → unsafe writes blocked; reads may degrade depending on policy.
+              </div>
+              <div class="row" style="margin-top: 8px">
+                <button class="btnDanger" id="btnCopyScenarioRpcOutage">Copy run command</button>
+              </div>
+            </div>
+
+            <div class="attackCard">
+              <div class="attackTitle">Byzantine RPC (quorum=2)</div>
+              <div class="attackDesc">
+                Uses a local RPC proxy + quorum=2. One endpoint sabotages after 30s. Expected: byzantine/outage detected; kernel refuses unsafe operations.
+              </div>
+              <div class="row" style="margin-top: 8px">
+                <button class="btnDanger" id="btnCopyScenarioByzantineRpc">Copy run command</button>
+              </div>
+            </div>
+          </div>
+
+          <details>
+            <summary>Show all commands (raw)</summary>
+            <pre id="scenarioCommands">{"loading":true}</pre>
+          </details>
+        </div>
+
+        <div class="card">
           <div class="split">
             <div class="left">
               <div class="row" style="justify-content: space-between">
@@ -1383,6 +1487,50 @@
         return h.slice(0, 10) + "…" + h.slice(-8);
       }
 
+      async function copyText(text, label) {
+        try {
+          if (!(typeof text === "string") || text.trim() === "") {
+            throw new Error("empty text");
+          }
+          if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(text);
+            log("[ui] copied: " + (label || "text"), "meta");
+            return;
+          }
+          throw new Error("clipboard not available");
+        } catch (e) {
+          log("[ui] copy failed: " + (e && e.message ? e.message : String(e)), "warn");
+        }
+      }
+
+      const scenario = {
+        composeBase:
+          "docker compose \\\n" +
+          "  -f blackcat-testing/docker/minimal-prod/docker-compose.yml \\\n" +
+          "  -f blackcat-testing/docker/minimal-prod/docker-compose.demo.yml",
+      };
+      scenario.resetTrusted = scenario.composeBase + "\n  up -d --build --force-recreate app runner insecure\n";
+      scenario.resetHard = scenario.composeBase + "\n  down -v\n\n" + scenario.resetTrusted;
+
+      scenario.fsTamper =
+        scenario.composeBase +
+        " \\\n  -f blackcat-testing/docker/minimal-prod/docker-compose.filesystem-tamper.yml\n  up -d --build --force-recreate app runner\n";
+      scenario.configTamper =
+        scenario.composeBase +
+        " \\\n  -f blackcat-testing/docker/minimal-prod/docker-compose.config-tamper-restart.yml\n  up -d --build --force-recreate app runner\n";
+      scenario.manifestTamper =
+        scenario.composeBase +
+        " \\\n  -f blackcat-testing/docker/minimal-prod/docker-compose.manifest-tamper-restart.yml\n  up -d --build --force-recreate app runner\n";
+      scenario.controllerSwap =
+        scenario.composeBase +
+        " \\\n  -f blackcat-testing/docker/minimal-prod/docker-compose.controller-swap-restart.yml\n  up -d --build --force-recreate app runner\n";
+      scenario.rpcOutage =
+        scenario.composeBase +
+        " \\\n  -f blackcat-testing/docker/minimal-prod/docker-compose.rpc-outage.yml\n  up -d --build --force-recreate app runner\n";
+      scenario.byzantineRpc =
+        scenario.composeBase +
+        " \\\n  -f blackcat-testing/docker/minimal-prod/docker-compose.byzantine-rpc.yml\n  up -d --build --force-recreate app runner\n";
+
       async function refreshMeta() {
         try {
           const { json } = await fetchJson("/demo/meta");
@@ -1429,6 +1577,62 @@
             } else {
               ti.textContent = "unknown";
             }
+          }
+
+          // Scenario panel fields
+          const scTamper = el("scTamper");
+          if (scTamper) {
+            const after = metaState.tamperAfterSec;
+            const kind = metaState.tamperKind || null;
+            if (typeof after === "number" && after > 0) {
+              scTamper.textContent = (kind || "unknown") + " @ " + after + "s";
+              scTamper.className = "statVal warn";
+            } else if (typeof after === "number" && after === 0) {
+              scTamper.textContent = "disabled";
+              scTamper.className = "statVal ok";
+            } else {
+              scTamper.textContent = "unknown";
+              scTamper.className = "statVal warn";
+            }
+          }
+
+          const scRpcEndpoints = el("scRpcEndpoints");
+          if (scRpcEndpoints) {
+            const n = typeof json.rpc_endpoints_count === "number" ? json.rpc_endpoints_count : null;
+            scRpcEndpoints.textContent = typeof n === "number" ? String(n) : "?";
+          }
+
+          const scRpcQuorum = el("scRpcQuorum");
+          if (scRpcQuorum) {
+            const q = typeof json.rpc_quorum === "number" ? json.rpc_quorum : null;
+            scRpcQuorum.textContent = typeof q === "number" ? String(q) : "?";
+          }
+
+          const scRpcSab = el("scRpcSabotage");
+          if (scRpcSab) {
+            const demo = json && typeof json.demo === "object" && json.demo ? json.demo : null;
+            const a = demo && typeof demo.rpc_sabotage_after_sec === "number" ? demo.rpc_sabotage_after_sec : 0;
+            const b = demo && typeof demo.rpc_proxy_sabotage_after_sec === "number" ? demo.rpc_proxy_sabotage_after_sec : 0;
+            scRpcSab.textContent = "hosts=" + String(a || 0) + "s / proxy=" + String(b || 0) + "s";
+          }
+
+          const scCmd = el("scenarioCommands");
+          if (scCmd) {
+            scCmd.textContent = JSON.stringify(
+              {
+                note: "Run from the blackcatacademy repo root. Commands manage local demo containers only.",
+                reset_trusted: scenario.resetTrusted,
+                reset_hard: scenario.resetHard,
+                filesystem_tamper: scenario.fsTamper,
+                config_tamper: scenario.configTamper,
+                manifest_tamper: scenario.manifestTamper,
+                controller_swap: scenario.controllerSwap,
+                rpc_outage: scenario.rpcOutage,
+                byzantine_rpc: scenario.byzantineRpc,
+              },
+              null,
+              2
+            );
           }
         } catch (e) {
           metaState.insecureBase = deriveInsecureBaseFromHost();
@@ -2067,6 +2271,15 @@
           log("[ui] copy failed: " + (e && e.message ? e.message : String(e)), "warn");
         }
       });
+
+      bindClick("btnCopyResetTrusted", () => copyText(scenario.resetTrusted, "reset to trusted"));
+      bindClick("btnCopyResetHard", () => copyText(scenario.resetHard, "hard reset"));
+      bindClick("btnCopyScenarioFsTamper", () => copyText(scenario.fsTamper, "filesystem tamper"));
+      bindClick("btnCopyScenarioConfigTamper", () => copyText(scenario.configTamper, "config tamper"));
+      bindClick("btnCopyScenarioManifestTamper", () => copyText(scenario.manifestTamper, "manifest tamper"));
+      bindClick("btnCopyScenarioControllerSwap", () => copyText(scenario.controllerSwap, "controller swap"));
+      bindClick("btnCopyScenarioRpcOutage", () => copyText(scenario.rpcOutage, "rpc outage"));
+      bindClick("btnCopyScenarioByzantineRpc", () => copyText(scenario.byzantineRpc, "byzantine rpc"));
 
       bindClick("btnAttackKeyInsecure", () => runAttack("key_exfil", "insecure"));
       bindClick("btnAttackKeySecure", () => runAttack("key_exfil", "secure"));
