@@ -74,6 +74,109 @@ function safeString(mixed $v): ?string
     return $v;
 }
 
+/**
+ * Best-effort SO_PEERCRED option number (Linux).
+ *
+ * Some PHP builds do not expose the SO_PEERCRED constant, and some builds cannot decode the
+ * `struct ucred` payload (so socket_get_option returns only the first int / pid).
+ *
+ * @return int|null
+ */
+function linuxSoPeercredOpt(): ?int
+{
+    if (defined('SO_PEERCRED')) {
+        return (int) SO_PEERCRED;
+    }
+
+    if (!defined('PHP_OS_FAMILY') || PHP_OS_FAMILY !== 'Linux') {
+        return null;
+    }
+
+    $candidates = [
+        '/usr/include/asm-generic/socket.h',
+        '/usr/include/asm/socket.h',
+    ];
+
+    /** @var array<int,string> $globbed */
+    $globbed = glob('/usr/include/*-linux-gnu/asm/socket.h') ?: [];
+    foreach ($globbed as $p) {
+        if (is_string($p) && $p !== '' && !str_contains($p, "\0")) {
+            $candidates[] = $p;
+        }
+    }
+
+    foreach ($candidates as $p) {
+        if (!is_string($p) || $p === '' || str_contains($p, "\0")) {
+            continue;
+        }
+        if (!is_file($p) || is_link($p) || !is_readable($p)) {
+            continue;
+        }
+        $raw = @file_get_contents($p);
+        if (!is_string($raw) || $raw === '') {
+            continue;
+        }
+        if (preg_match('/^[ \\t]*#define[ \\t]+SO_PEERCRED[ \\t]+(0x[0-9a-fA-F]+|\\d+)/m', $raw, $m) !== 1) {
+            continue;
+        }
+
+        $v = (string) ($m[1] ?? '');
+        if ($v === '') {
+            continue;
+        }
+        $opt = null;
+        if (str_starts_with(strtolower($v), '0x')) {
+            $opt = hexdec(substr($v, 2));
+        } elseif (ctype_digit($v)) {
+            $opt = (int) $v;
+        }
+        if (!is_int($opt) || $opt <= 0 || $opt > 2048) {
+            continue;
+        }
+        return $opt;
+    }
+
+    return null;
+}
+
+/**
+ * Best-effort parse of UID/GID from /proc/<pid>/status (Linux).
+ *
+ * @return array{uid:?int,gid:?int}
+ */
+function linuxProcUidGid(int $pid): array
+{
+    if (!defined('PHP_OS_FAMILY') || PHP_OS_FAMILY !== 'Linux') {
+        return ['uid' => null, 'gid' => null];
+    }
+
+    if ($pid <= 0 || $pid > 1_000_000_000) {
+        return ['uid' => null, 'gid' => null];
+    }
+
+    $path = '/proc/' . $pid . '/status';
+    if (!is_file($path) || is_link($path) || !is_readable($path)) {
+        return ['uid' => null, 'gid' => null];
+    }
+
+    $raw = @file_get_contents($path, false, null, 0, 8 * 1024);
+    if (!is_string($raw) || $raw === '') {
+        return ['uid' => null, 'gid' => null];
+    }
+
+    $uid = null;
+    $gid = null;
+
+    if (preg_match('/^Uid:\\s+(\\d+)/m', $raw, $m) === 1) {
+        $uid = ctype_digit((string) $m[1]) ? (int) $m[1] : null;
+    }
+    if (preg_match('/^Gid:\\s+(\\d+)/m', $raw, $m) === 1) {
+        $gid = ctype_digit((string) $m[1]) ? (int) $m[1] : null;
+    }
+
+    return ['uid' => $uid, 'gid' => $gid];
+}
+
 function assertSecureDir(string $path, string $label): void
 {
     clearstatcache(true, $path);
@@ -269,14 +372,7 @@ function peerInfo(mixed $conn): array
         && function_exists('socket_get_option')
         && defined('SOL_SOCKET')
     ) {
-        $optPeercred = null;
-        if (defined('SO_PEERCRED')) {
-            $optPeercred = (int) SO_PEERCRED;
-        } elseif (defined('PHP_OS_FAMILY') && PHP_OS_FAMILY === 'Linux') {
-            // On Linux, SO_PEERCRED is typically 17. Some PHP builds (including Debian images)
-            // ship the sockets extension without exposing the constant.
-            $optPeercred = 17;
-        }
+        $optPeercred = linuxSoPeercredOpt();
 
         /** @var \Socket|false $sock */
         $sock = @socket_import_stream($conn);
@@ -287,6 +383,13 @@ function peerInfo(mixed $conn): array
                 $uid = isset($cred['uid']) && is_int($cred['uid']) ? $cred['uid'] : null;
                 $gid = isset($cred['gid']) && is_int($cred['gid']) ? $cred['gid'] : null;
                 $pid = isset($cred['pid']) && is_int($cred['pid']) ? $cred['pid'] : null;
+            } elseif (is_int($cred) && $cred > 0) {
+                // Some PHP builds cannot decode `struct ucred` and return only the first int.
+                // Treat it as a PID and resolve UID/GID via /proc.
+                $pid = $cred;
+                $p = linuxProcUidGid($pid);
+                $uid = $p['uid'];
+                $gid = $p['gid'];
             }
         }
     }

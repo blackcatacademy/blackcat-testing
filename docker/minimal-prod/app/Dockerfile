@@ -21,7 +21,7 @@ RUN set -eux; \
   docker-php-ext-install pdo_mysql; \
   docker-php-ext-install curl; \
   # Required for SO_PEERCRED peer identity checks on the secrets-agent UNIX socket.
-  CFLAGS="${CFLAGS:-} -D_GNU_SOURCE -DSO_PEERCRED=17" docker-php-ext-install sockets; \
+  CFLAGS="${CFLAGS:-} -D_GNU_SOURCE" docker-php-ext-install sockets; \
   rm -rf /var/lib/apt/lists/*; \
   php -m | grep -E '^pdo_mysql$'; \
   php -m | grep -E '^curl$'; \
