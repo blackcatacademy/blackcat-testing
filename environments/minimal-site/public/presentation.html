@@ -540,6 +540,70 @@
         border-color: rgba(96, 165, 250, 0.65);
         box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
       }
+
+      .statsGrid {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 10px;
+      }
+      .stat {
+        grid-column: span 6;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(0, 0, 0, 0.18);
+      }
+      @media (min-width: 980px) {
+        .stat {
+          grid-column: span 3;
+        }
+        .stat.wide {
+          grid-column: span 6;
+        }
+      }
+      .statLabel {
+        color: rgba(255, 255, 255, 0.70);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .statVal {
+        margin-top: 6px;
+        font-family: var(--mono);
+        font-size: 18px;
+        font-weight: 900;
+        letter-spacing: -0.01em;
+      }
+      .statVal.ok { color: var(--ok); }
+      .statVal.bad { color: var(--bad); }
+      .statVal.warn { color: var(--warn); }
+
+      details {
+        margin-top: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(0, 0, 0, 0.16);
+        overflow: hidden;
+      }
+      summary {
+        cursor: pointer;
+        user-select: none;
+        padding: 10px 12px;
+        font-weight: 800;
+        color: rgba(255, 255, 255, 0.86);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      details[open] summary {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      details pre {
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+        max-height: 320px;
+      }
     </style>
   </head>
   <body>
@@ -828,10 +892,32 @@
             <div class="row"><span class="pill"><strong>Tx outbox</strong></span><span class="pill">anonymized signals</span></div>
             <div class="row"><button id="btnRefreshOutbox">Refresh</button></div>
           </div>
-          <pre id="outbox">{"loading":true}</pre>
-          <div class="muted">
-            When something suspicious happens (tamper, filesystem findings, RPC byzantine/outage), the system queues signature requests and tx intents for incident response.
+          <div class="statsGrid" aria-label="tx outbox stats">
+            <div class="stat">
+              <div class="statLabel">Status</div>
+              <div id="outboxStatus" class="statVal warn">loading…</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">Pending</div>
+              <div id="outboxPending" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">Sent</div>
+              <div id="outboxSent" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">Failed</div>
+              <div id="outboxFailed" class="statVal">?</div>
+            </div>
           </div>
+          <div class="muted">
+            <strong>What it is:</strong> a local “transaction outbox” directory containing <em>tx intents</em> + <em>signature requests</em>.
+            The protected kernel queues incidents here on anomalies (tamper, integrity mismatch, RPC byzantine disagreement/outage). A relayer/watcher can later broadcast them.
+          </div>
+          <details>
+            <summary>Raw tx-outbox JSON</summary>
+            <pre id="outboxRaw">{"loading":true}</pre>
+          </details>
         </div>
 
         <div class="card half">
@@ -839,10 +925,48 @@
             <div class="row"><span class="pill"><strong>Soak harness (attacker simulation)</strong></span><span class="pill">latest run</span></div>
             <div class="row"><button id="btnRefreshSoak">Refresh</button><a class="pill" id="lnkSoakReport" href="/demo/soak/report" target="_blank" rel="noopener"><strong>Open report</strong> →</a></div>
           </div>
-          <pre id="soak">{"loading":true}</pre>
-          <div class="muted">
-            A dedicated attacker container continuously probes health/DB/crypto and common web attack surfaces; results are summarized here and can be exported to a Markdown report.
+          <div class="statsGrid" aria-label="soak harness stats">
+            <div class="stat wide">
+              <div class="statLabel">Target</div>
+              <div id="soakTarget" class="statVal">loading…</div>
+              <div class="muted" style="margin-top: 8px">
+                <strong>Why <span class="k">app:8080</span>?</strong> The soak/attacker runs <em>inside Docker</em> and targets the protected container by its internal DNS name.
+                On your host, you open the same target via <span class="k">http://localhost:8088</span>.
+              </div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">Ticks</div>
+              <div id="soakTicks" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">Duration</div>
+              <div id="soakDuration" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">RPS</div>
+              <div id="soakRps" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">Trusted</div>
+              <div id="soakTrusted" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">RPC OK</div>
+              <div id="soakRpcOk" class="statVal">?</div>
+            </div>
+            <div class="stat">
+              <div class="statLabel">Tamper</div>
+              <div id="soakTamper" class="statVal">?</div>
+            </div>
           </div>
+          <div class="muted">
+            <strong>What it does:</strong> a dedicated attacker container continuously probes health/DB/crypto and common bypass routes over time.
+            It produces a human-friendly Markdown report for investors and audits.
+          </div>
+          <details>
+            <summary>Raw soak JSON</summary>
+            <pre id="soakRaw">{"loading":true}</pre>
+          </details>
         </div>
 
         <div class="card">
@@ -1004,6 +1128,10 @@
           lastText: null,
           lastOkAtMs: null,
           lastCountsJson: null,
+        },
+        soak: {
+          lastText: null,
+          lastOkAtMs: null,
         },
       };
 
@@ -1409,10 +1537,50 @@
         try {
           const { json } = await fetchJson("/demo/tx-outbox", 12000);
           const text = JSON.stringify(json, null, 2);
-          const out = el("outbox");
+          const out = el("outboxRaw");
           if (out) out.textContent = text;
           pitchState.outbox.lastText = text;
           pitchState.outbox.lastOkAtMs = Date.now();
+          pitchState.outbox.lastCountsJson = json && typeof json.counts === "object" ? json.counts : null;
+
+          const pendingEl = el("outboxPending");
+          const sentEl = el("outboxSent");
+          const failedEl = el("outboxFailed");
+          const statusEl = el("outboxStatus");
+
+          const counts = json && typeof json.counts === "object" && json.counts ? json.counts : null;
+          const pendingCount = counts && typeof counts.pending === "number" ? counts.pending : null;
+          const processingCount = counts && typeof counts.processing === "number" ? counts.processing : null;
+          const signedCount = counts && typeof counts.signed === "number" ? counts.signed : null;
+          const sentCount = counts && typeof counts.sent === "number" ? counts.sent : null;
+          const failedCount = counts && typeof counts.failed === "number" ? counts.failed : null;
+
+          const pendingTotal =
+            (typeof pendingCount === "number" ? pendingCount : 0) +
+            (typeof processingCount === "number" ? processingCount : 0) +
+            (typeof signedCount === "number" ? signedCount : 0);
+
+          if (pendingEl) pendingEl.textContent = String(pendingTotal);
+          if (sentEl) sentEl.textContent = typeof sentCount === "number" ? String(sentCount) : "?";
+          if (failedEl) failedEl.textContent = typeof failedCount === "number" ? String(failedCount) : "?";
+
+          const hasPending = pendingTotal > 0 || (typeof sentCount === "number" && sentCount > 0);
+          const hasFailed = typeof failedCount === "number" && failedCount > 0;
+          const ok = json && json.ok === true;
+
+          if (statusEl) {
+            let label = ok ? "idle" : "error";
+            let kind = ok ? "ok" : "bad";
+            if (ok && hasFailed) {
+              label = "attention";
+              kind = "bad";
+            } else if (ok && hasPending) {
+              label = "active";
+              kind = "warn";
+            }
+            statusEl.textContent = label;
+            statusEl.className = "statVal " + kind;
+          }
 
           // Detect queued incident intents/signature requests.
           const latest = json && typeof json.latest === "object" ? json.latest : null;
@@ -1453,7 +1621,7 @@
           const err = e && e.message ? e.message : String(e);
           log("[outbox] fetch failed: " + err);
 
-          const out = el("outbox");
+          const out = el("outboxRaw");
           if (!out) return;
 
           if (typeof pitchState.outbox.lastText === "string" && pitchState.outbox.lastText !== "") {
@@ -1469,15 +1637,102 @@
           }
 
           out.textContent = JSON.stringify({ ok: false, error: "outbox_fetch_failed", detail: err }, null, 2);
+
+          const statusEl = el("outboxStatus");
+          if (statusEl) {
+            statusEl.textContent = "stale";
+            statusEl.className = "statVal warn";
+          }
         }
       }
 
       async function refreshSoak() {
         try {
           const { json } = await fetchJson("/demo/soak/latest", 8000);
-          el("soak").textContent = JSON.stringify(json, null, 2);
+          const text = JSON.stringify(json, null, 2);
+          const rawEl = el("soakRaw");
+          if (rawEl) rawEl.textContent = text;
+          pitchState.soak.lastText = text;
+          pitchState.soak.lastOkAtMs = Date.now();
+
+          const meta = json && typeof json.meta === "object" && json.meta ? json.meta : null;
+          const summary = json && typeof json.summary === "object" && json.summary ? json.summary : null;
+
+          const target = meta && typeof meta.target === "string" ? meta.target : null;
+          const host = typeof window !== "undefined" && window.location && typeof window.location.origin === "string" ? window.location.origin : "http://localhost:8088";
+          const targetEl = el("soakTarget");
+          if (targetEl) targetEl.textContent = (target ? target : "?") + "  ⇢  host: " + host;
+
+          const ticks = summary && typeof summary.ticks === "number" ? summary.ticks : null;
+          const trustTrue = summary && typeof summary.trust_true === "number" ? summary.trust_true : null;
+          const rpcOkTrue = summary && typeof summary.rpc_ok_true === "number" ? summary.rpc_ok_true : null;
+
+          const ticksEl = el("soakTicks");
+          if (ticksEl) ticksEl.textContent = typeof ticks === "number" ? String(ticks) : "?";
+
+          const durationEl = el("soakDuration");
+          if (durationEl) {
+            const d = meta && typeof meta.duration_sec === "number" ? meta.duration_sec : null;
+            durationEl.textContent = typeof d === "number" ? String(d) + "s" : "?";
+          }
+
+          const rpsEl = el("soakRps");
+          if (rpsEl) {
+            const rps = meta && typeof meta.rps === "number" ? meta.rps : null;
+            rpsEl.textContent = typeof rps === "number" ? String(rps) : "?";
+          }
+
+          const tamperEl = el("soakTamper");
+          if (tamperEl) {
+            const after = meta && typeof meta.tamper_after_sec === "number" ? meta.tamper_after_sec : null;
+            tamperEl.textContent = typeof after === "number" ? (after > 0 ? String(after) + "s" : "disabled") : "?";
+          }
+
+          const ratio = (a, b) => {
+            if (!(typeof a === "number") || !(typeof b === "number") || b <= 0) return null;
+            return (a / b) * 100;
+          };
+
+          const trustedPct = ratio(trustTrue, ticks);
+          const rpcPct = ratio(rpcOkTrue, ticks);
+
+          const trustedEl = el("soakTrusted");
+          if (trustedEl) {
+            const p = trustedPct;
+            const t = typeof trustTrue === "number" && typeof ticks === "number" ? trustTrue + "/" + ticks : "?";
+            trustedEl.textContent = typeof p === "number" ? p.toFixed(0) + "% (" + t + ")" : "?";
+            trustedEl.className = "statVal " + (p === 100 ? "ok" : p === 0 ? "bad" : "warn");
+          }
+
+          const rpcEl = el("soakRpcOk");
+          if (rpcEl) {
+            const p = rpcPct;
+            const t = typeof rpcOkTrue === "number" && typeof ticks === "number" ? rpcOkTrue + "/" + ticks : "?";
+            rpcEl.textContent = typeof p === "number" ? p.toFixed(0) + "% (" + t + ")" : "?";
+            rpcEl.className = "statVal " + (p === 100 ? "ok" : p === 0 ? "bad" : "warn");
+          }
+
+          const reportUrl = json && typeof json.report_url === "string" ? json.report_url : null;
+          const link = el("lnkSoakReport");
+          if (link && reportUrl) link.href = reportUrl;
         } catch (e) {
-          el("soak").textContent = JSON.stringify({ ok: false, error: "soak_fetch_failed" }, null, 2);
+          const err = e && e.message ? e.message : String(e);
+          const rawEl = el("soakRaw");
+          if (!rawEl) return;
+
+          if (typeof pitchState.soak.lastText === "string" && pitchState.soak.lastText !== "") {
+            const ageMs = typeof pitchState.soak.lastOkAtMs === "number" ? Date.now() - pitchState.soak.lastOkAtMs : null;
+            const age = typeof ageMs === "number" ? Math.max(0, Math.floor(ageMs / 1000)) : null;
+            rawEl.textContent =
+              pitchState.soak.lastText +
+              "\n\n// NOTE: soak refresh failed (" +
+              err +
+              ")" +
+              (typeof age === "number" ? " — showing stale data (" + age + "s old)" : "");
+            return;
+          }
+
+          rawEl.textContent = JSON.stringify({ ok: false, error: "soak_fetch_failed", detail: err }, null, 2);
         }
       }
 
