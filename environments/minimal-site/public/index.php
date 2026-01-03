@@ -1956,37 +1956,106 @@ HttpKernel::run(
         }
 
         try {
-            $keysDir = Config::get('crypto.keys_dir');
-            if (!is_string($keysDir) || trim($keysDir) === '') {
-                $sendText(404, 'crypto.keys_dir not configured');
+            $socketPath = Config::get('crypto.agent.socket_path');
+            if (!is_string($socketPath) || trim($socketPath) === '' || str_contains($socketPath, "\0")) {
+                $socketPath = '/etc/blackcat/secrets-agent.sock';
+            }
+            $socketPath = trim($socketPath);
+
+            $request = static function (array $payload) use ($socketPath): array {
+                $fp = @stream_socket_client('unix://' . $socketPath, $errno, $errstr, 1, STREAM_CLIENT_CONNECT);
+                if (!is_resource($fp)) {
+                    return ['ok' => false, 'error' => 'agent_unavailable'];
+                }
+
+                stream_set_timeout($fp, 2);
+
+                $rawReq = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                if (!is_string($rawReq)) {
+                    fclose($fp);
+                    return ['ok' => false, 'error' => 'encode_failed'];
+                }
+
+                $ok = @fwrite($fp, $rawReq . "\n");
+                if ($ok === false) {
+                    fclose($fp);
+                    return ['ok' => false, 'error' => 'write_failed'];
+                }
+
+                $raw = @fgets($fp, 256 * 1024);
+                fclose($fp);
+
+                if (!is_string($raw) || trim($raw) === '') {
+                    return ['ok' => false, 'error' => 'empty_response'];
+                }
+
+                $decoded = json_decode(trim($raw), true);
+                if (!is_array($decoded)) {
+                    return ['ok' => false, 'error' => 'bad_response'];
+                }
+
+                /** @var array<string,mixed> $decoded */
+                return $decoded;
+            };
+
+            $plain = 'hello';
+            $enc = $request([
+                'op' => 'crypto_encrypt',
+                'basename' => 'crypto_key',
+                'plaintext_b64' => base64_encode($plain),
+            ]);
+
+            if (($enc['ok'] ?? null) !== true) {
+                $err = $enc['error'] ?? null;
+                if (is_string($err) && $err === 'denied') {
+                    $sendText(403, 'denied');
+                    return;
+                }
+                $sendText(500, 'encrypt_failed');
                 return;
             }
 
-            Crypto::initFromKeyManager($keysDir);
+            $cipher = $enc['ciphertext'] ?? null;
+            if (!is_string($cipher) || $cipher === '') {
+                $sendText(500, 'encrypt_failed');
+                return;
+            }
 
-            $cipher = Crypto::encrypt('hello', 'compact_base64');
-            $plain = Crypto::decrypt($cipher);
+            $dec = $request([
+                'op' => 'crypto_decrypt',
+                'basename' => 'crypto_key',
+                'ciphertext' => $cipher,
+            ]);
 
-            Crypto::clearKey();
+            if (($dec['ok'] ?? null) !== true) {
+                $err = $dec['error'] ?? null;
+                if (is_string($err) && $err === 'denied') {
+                    $sendText(403, 'denied');
+                    return;
+                }
+                $sendText(500, 'decrypt_failed');
+                return;
+            }
 
-            if ($plain !== 'hello') {
-                $sendText(500, 'roundtrip mismatch');
+            $plainB64 = $dec['plaintext_b64'] ?? null;
+            if (!is_string($plainB64) || $plainB64 === '') {
+                $sendText(500, 'decrypt_failed');
+                return;
+            }
+
+            $outPlain = base64_decode($plainB64, true);
+            if (!is_string($outPlain) || $outPlain !== $plain) {
+                $sendText(500, 'roundtrip_mismatch');
                 return;
             }
 
             $sendJson(200, [
                 'ok' => true,
                 'cipher_len' => strlen($cipher),
+                'key_version' => is_string($enc['key_version'] ?? null) ? $enc['key_version'] : null,
             ]);
             return;
-        } catch (TrustKernelException) {
-            $sendText(403, 'denied');
-            return;
         } catch (\Throwable) {
-            try {
-                Crypto::clearKey();
-            } catch (\Throwable) {
-            }
             $sendText(500, 'error');
             return;
         }
