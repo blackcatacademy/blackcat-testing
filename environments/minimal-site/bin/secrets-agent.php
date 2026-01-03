@@ -265,10 +265,161 @@ function resolveConfigIfPossible(): void
 
 resolveConfigIfPossible();
 
+/**
+ * Trust status cache written by trust-runner (fast path for agent authorization decisions).
+ *
+ * @return array{
+ *   enforcement?:string,
+ *   read_allowed?:bool,
+ *   write_allowed?:bool,
+ *   paused?:bool,
+ *   checked_at?:int,
+ *   last_ok_at?:int|null,
+ *   error_codes?:array<int,string>
+ * }|null
+ */
+function tryReadTrustMonitorCache(string $path, int $maxAgeSec): ?array
+{
+    $path = trim($path);
+    if ($path === '' || str_contains($path, "\0")) {
+        return null;
+    }
+
+    clearstatcache(true, $path);
+
+    if (!is_file($path) || is_link($path)) {
+        return null;
+    }
+
+    $st = @stat($path);
+    if (!is_array($st)) {
+        return null;
+    }
+
+    $mode = (int) ($st['mode'] ?? 0);
+    $perms = $mode & 0o777;
+
+    $type = $mode & 0o170000;
+    if ($type !== 0o100000) {
+        return null;
+    }
+
+    // Root-owned and not writable by group/other.
+    $uid = (int) ($st['uid'] ?? -1);
+    if ($uid !== 0) {
+        return null;
+    }
+    if (($perms & 0o022) !== 0) {
+        return null;
+    }
+
+    $raw = @file_get_contents($path);
+    if (!is_string($raw) || trim($raw) === '') {
+        return null;
+    }
+
+    /** @var mixed $decoded */
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return null;
+    }
+
+    if (($decoded['ok'] ?? null) !== true) {
+        return null;
+    }
+
+    $gen = $decoded['generated_unix'] ?? null;
+    if (!is_int($gen)) {
+        return null;
+    }
+
+    $maxAgeSec = max(1, min(300, $maxAgeSec));
+    if ((time() - $gen) > $maxAgeSec) {
+        return null;
+    }
+
+    $trust = $decoded['trust'] ?? null;
+    if (!is_array($trust)) {
+        return null;
+    }
+
+    $monitor = $trust['monitor'] ?? null;
+    if (!is_array($monitor)) {
+        return null;
+    }
+
+    /** @var array{
+     *   enforcement?:string,
+     *   read_allowed?:bool,
+     *   write_allowed?:bool,
+     *   paused?:bool,
+     *   checked_at?:int,
+     *   last_ok_at?:int|null,
+     *   error_codes?:array<int,string>
+     * } $monitor
+     */
+    return $monitor;
+}
+
+function assertAllowedByTrustKernelOrCache(
+    TrustKernel $kernel,
+    string $context,
+    bool $needsWrite,
+    string $cachePath,
+    int $cacheMaxAgeSec,
+): void {
+    $monitor = tryReadTrustMonitorCache($cachePath, $cacheMaxAgeSec);
+
+    if (is_array($monitor)) {
+        $paused = $monitor['paused'] ?? null;
+        if ($paused === true) {
+            throw new TrustKernelException('[trust-kernel] PAUSED: [trust-status-cache]');
+        }
+
+        $enforcement = $monitor['enforcement'] ?? null;
+        if (is_string($enforcement)) {
+            $enforcement = strtolower(trim($enforcement));
+        } else {
+            $enforcement = null;
+        }
+
+        // Match TrustKernel semantics:
+        // - warn mode: allow (log happens in runner/kernel), except paused
+        // - strict mode: enforce read_allowed/write_allowed
+        if ($enforcement === 'warn') {
+            return;
+        }
+
+        $readAllowed = $monitor['read_allowed'] ?? null;
+        $writeAllowed = $monitor['write_allowed'] ?? null;
+
+        if ($needsWrite) {
+            if ($writeAllowed === true) {
+                return;
+            }
+            throw new TrustKernelException('[trust-kernel] denied (strict): ' . $context);
+        }
+
+        if ($readAllowed === true) {
+            return;
+        }
+        throw new TrustKernelException('[trust-kernel] denied (strict): ' . $context);
+    }
+
+    // Fallback: compute live status (slower; may perform RPC).
+    if ($needsWrite) {
+        $kernel->assertWriteAllowed($context);
+        return;
+    }
+    $kernel->assertReadAllowed($context);
+}
+
 $socketPath = null;
 $keysDir = null;
 $dbCredsPath = null;
 $auditDir = null;
+$trustStatusCachePath = null;
+$trustStatusCacheMaxAgeSec = null;
 $kernel = null;
 $peerCredRequired = true;
 /** @var list<int> */
@@ -553,6 +704,8 @@ $socketPath ??= '/etc/blackcat/secrets-agent.sock';
 $keysDir ??= '/etc/blackcat/keys';
 $dbCredsPath ??= '/etc/blackcat/db.credentials.json';
 $auditDir ??= '/var/lib/blackcat/audit-chain';
+$trustStatusCachePath ??= '/var/lib/blackcat/trust.status.json';
+$trustStatusCacheMaxAgeSec ??= 15;
 
 // Default peer allowlist (best-effort): allow only www-data uid when available.
 if ($allowedPeerUids === []) {
@@ -571,6 +724,7 @@ if ($allowedPeerUids === []) {
 $socketPath = trim($socketPath);
 $keysDir = trim($keysDir);
 $auditDir = trim($auditDir);
+$trustStatusCachePath = trim($trustStatusCachePath);
 
 if ($socketPath === '' || str_contains($socketPath, "\0")) {
     throw new \RuntimeException('Invalid socket path.');
@@ -938,7 +1092,13 @@ while (true) {
             }
 
             if ($kernel instanceof TrustKernel) {
-                $kernel->assertReadAllowed('secrets-agent:get_all_keys');
+                assertAllowedByTrustKernelOrCache(
+                    $kernel,
+                    'secrets-agent:get_all_keys',
+                    false,
+                    $trustStatusCachePath,
+                    (int) $trustStatusCacheMaxAgeSec,
+                );
             }
 
             $versions = KeyManager::listKeyVersions($keysDir, $basename);
@@ -1008,7 +1168,13 @@ while (true) {
             }
 
             if ($kernel instanceof TrustKernel) {
-                $kernel->assertReadAllowed('secrets-agent:filevault_encrypt_stream');
+                assertAllowedByTrustKernelOrCache(
+                    $kernel,
+                    'secrets-agent:filevault_encrypt_stream',
+                    false,
+                    $trustStatusCachePath,
+                    (int) $trustStatusCacheMaxAgeSec,
+                );
             }
 
             $tmpDir = sys_get_temp_dir();
@@ -1132,7 +1298,13 @@ while (true) {
             }
 
             if ($kernel instanceof TrustKernel) {
-                $kernel->assertReadAllowed('secrets-agent:filevault_decrypt_stream');
+                assertAllowedByTrustKernelOrCache(
+                    $kernel,
+                    'secrets-agent:filevault_decrypt_stream',
+                    false,
+                    $trustStatusCachePath,
+                    (int) $trustStatusCacheMaxAgeSec,
+                );
             }
 
             $tmpDir = sys_get_temp_dir();
@@ -1262,7 +1434,13 @@ while (true) {
             }
 
             if ($kernel instanceof TrustKernel) {
-                $kernel->assertReadAllowed('secrets-agent:crypto_encrypt');
+                assertAllowedByTrustKernelOrCache(
+                    $kernel,
+                    'secrets-agent:crypto_encrypt',
+                    false,
+                    $trustStatusCachePath,
+                    (int) $trustStatusCacheMaxAgeSec,
+                );
             }
 
             $versions = KeyManager::listKeyVersions($keysDir, $basename);
@@ -1372,7 +1550,13 @@ while (true) {
             $ad = 'app:crypto:v1';
 
             if ($kernel instanceof TrustKernel) {
-                $kernel->assertReadAllowed('secrets-agent:crypto_decrypt');
+                assertAllowedByTrustKernelOrCache(
+                    $kernel,
+                    'secrets-agent:crypto_decrypt',
+                    false,
+                    $trustStatusCachePath,
+                    (int) $trustStatusCacheMaxAgeSec,
+                );
             }
 
             $versions = KeyManager::listKeyVersions($keysDir, $basename);
@@ -1481,7 +1665,13 @@ while (true) {
             }
 
             if ($kernel instanceof TrustKernel) {
-                $kernel->assertReadAllowed('secrets-agent:hmac');
+                assertAllowedByTrustKernelOrCache(
+                    $kernel,
+                    'secrets-agent:hmac',
+                    false,
+                    $trustStatusCachePath,
+                    (int) $trustStatusCacheMaxAgeSec,
+                );
             }
 
             $versions = KeyManager::listKeyVersions($keysDir, $basename);
@@ -1611,9 +1801,21 @@ while (true) {
 
         if ($kernel instanceof TrustKernel) {
             if ($role === 'write') {
-                $kernel->assertWriteAllowed('secrets-agent:get_db_credentials');
+                assertAllowedByTrustKernelOrCache(
+                    $kernel,
+                    'secrets-agent:get_db_credentials',
+                    true,
+                    $trustStatusCachePath,
+                    (int) $trustStatusCacheMaxAgeSec,
+                );
             } else {
-                $kernel->assertReadAllowed('secrets-agent:get_db_credentials');
+                assertAllowedByTrustKernelOrCache(
+                    $kernel,
+                    'secrets-agent:get_db_credentials',
+                    false,
+                    $trustStatusCachePath,
+                    (int) $trustStatusCacheMaxAgeSec,
+                );
             }
         }
 
