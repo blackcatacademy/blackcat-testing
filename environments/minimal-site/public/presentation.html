@@ -191,6 +191,60 @@
         max-height: 260px;
       }
 
+      pre.console {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        min-height: 220px;
+        max-height: 360px;
+      }
+
+      .attackGrid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 10px;
+      }
+      .attackCard {
+        grid-column: span 12;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(0, 0, 0, 0.18);
+      }
+      @media (min-width: 980px) {
+        .attackCard {
+          grid-column: span 6;
+        }
+      }
+      .attackTitle {
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      .attackDesc {
+        margin-top: 4px;
+        color: var(--m);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .attackInput {
+        margin-top: 8px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
+      input[type="text"] {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.30);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: var(--t);
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -565,7 +619,78 @@
                 </tbody>
               </table>
 
-              <pre id="log">Ready.</pre>
+              <div class="row" style="justify-content: space-between; margin-top: 12px">
+                <div class="row">
+                  <span class="pill"><strong>Attack panel</strong></span>
+                  <span class="pill">click-to-run</span>
+                  <span class="pill">secrets redacted in console</span>
+                </div>
+                <div class="row">
+                  <button id="btnClearLog">Clear console</button>
+                  <button id="btnCopyLog">Copy</button>
+                </div>
+              </div>
+
+              <div class="attackGrid" aria-label="attack panel">
+                <div class="attackCard">
+                  <div class="attackTitle">Key exfiltration</div>
+                  <div class="attackDesc">Attempt to read the crypto key file from the web runtime.</div>
+                  <div class="row" style="margin-top: 8px">
+                    <button id="btnAttackKeyInsecure">Run on unprotected</button>
+                    <button id="btnAttackKeySecure">Run on protected</button>
+                  </div>
+                </div>
+                <div class="attackCard">
+                  <div class="attackTitle">DB credential exfiltration</div>
+                  <div class="attackDesc">Attempt to read DB credentials / env from inside the web runtime.</div>
+                  <div class="row" style="margin-top: 8px">
+                    <button id="btnAttackDbCredsInsecure">Run on unprotected</button>
+                    <button id="btnAttackDbCredsSecure">Run on protected</button>
+                  </div>
+                </div>
+                <div class="attackCard">
+                  <div class="attackTitle">Raw PDO bypass</div>
+                  <div class="attackDesc">Try to bypass wrappers and open a raw PDO connection.</div>
+                  <div class="row" style="margin-top: 8px">
+                    <button id="btnAttackPdoInsecure">Run on unprotected</button>
+                    <button id="btnAttackPdoSecure">Run on protected</button>
+                  </div>
+                </div>
+                <div class="attackCard">
+                  <div class="attackTitle">DB write (gated)</div>
+                  <div class="attackDesc">Try a DB write. Protected succeeds only when TrustKernel allows it (trusted + not paused).</div>
+                  <div class="row" style="margin-top: 8px">
+                    <button id="btnAttackWriteInsecure">Run on unprotected</button>
+                    <button id="btnAttackWriteSecure">Run on protected</button>
+                  </div>
+                </div>
+                <div class="attackCard">
+                  <div class="attackTitle">DB dump (drama)</div>
+                  <div class="attackDesc">Show how “dumping tables is just code” in an unprotected runtime.</div>
+                  <div class="row" style="margin-top: 8px">
+                    <button id="btnAttackDbDumpInsecure">Run on unprotected</button>
+                    <button id="btnAttackDbDumpSecure">Try on protected</button>
+                  </div>
+                </div>
+                <div class="attackCard">
+                  <div class="attackTitle">Spam the victim (drama)</div>
+                  <div class="attackDesc">Simulates collecting a victim email into a spam list (demo only).</div>
+                  <div class="attackInput">
+                    <input id="spamEmail" type="text" value="victim@example.com" aria-label="victim email" />
+                    <button id="btnAttackSpamInsecure">Run</button>
+                  </div>
+                  <div class="row" style="margin-top: 8px">
+                    <button id="btnAttackLootInsecure">Show attacker loot</button>
+                    <button id="btnAttackLootSecure">Try loot on protected</button>
+                  </div>
+                </div>
+              </div>
+
+              <pre id="log" class="console">Ready.</pre>
+              <div class="muted">
+                Console guide: <span class="k">200</span>=operation succeeded; <span class="k">403</span>=blocked by BlackCat guard; <span class="k">404</span>=route not present (smaller attack surface); <span class="k">503</span>=fail-closed (untrusted/RPC/tamper).
+                Secrets are redacted in this console output.
+              </div>
             </div>
 
             <div class="right">
@@ -824,6 +949,138 @@
           throw new Error("invalid json from " + url + ": " + text.slice(0, 120));
         }
         return { res, json };
+      }
+
+      async function fetchAny(url, opts, timeoutMs) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), typeof timeoutMs === "number" ? timeoutMs : 8000);
+        let res;
+        let text = "";
+        try {
+          res = await fetch(url, { cache: "no-store", signal: controller.signal, ...(opts || {}) });
+          text = await res.text();
+        } finally {
+          window.clearTimeout(timer);
+        }
+        let json = null;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          json = null;
+        }
+        return { res, text, json };
+      }
+
+      function redactJsonDeep(v, depth) {
+        if (depth <= 0) return "[redacted]";
+        if (v === null || v === undefined) return v;
+        if (typeof v === "string") return v.length > 400 ? v.slice(0, 400) + "…(truncated)" : v;
+        if (typeof v === "number" || typeof v === "boolean") return v;
+        if (Array.isArray(v)) return v.slice(0, 20).map((x) => redactJsonDeep(x, depth - 1));
+        if (typeof v === "object") {
+          const out = {};
+          for (const [k, val] of Object.entries(v)) {
+            if (k === "key_b64" || k === "pass" || k === "password" || k === "secret" || k === "private_key") {
+              out[k] = "[redacted]";
+              continue;
+            }
+            if (k === "plaintext") {
+              out[k] = "[redacted]";
+              continue;
+            }
+            out[k] = redactJsonDeep(val, depth - 1);
+          }
+          return out;
+        }
+        return "[redacted]";
+      }
+
+      function summarizeAttack(attackId, json) {
+        if (!json || typeof json !== "object") return null;
+
+        if (attackId === "key_exfil") {
+          const keyLen = typeof json.key_len === "number" ? json.key_len : null;
+          const keyPath = typeof json.key_path === "string" ? json.key_path : null;
+          return { ok: json.ok === true, key_len: keyLen, key_path: keyPath, note: json.note || null };
+        }
+        if (attackId === "db_creds") {
+          const db = json.db && typeof json.db === "object" ? json.db : null;
+          return {
+            ok: json.ok === true,
+            has_db: !!db,
+            dsn: db && typeof db.dsn === "string" ? db.dsn : null,
+            user: db && typeof db.user === "string" ? "[redacted]" : null,
+            pass: db && typeof db.pass === "string" ? "[redacted]" : null,
+            note: json.note || null,
+          };
+        }
+        if (attackId === "db_dump") {
+          const dump = json.dump && typeof json.dump === "object" ? json.dump : null;
+          const rows = (k) => (dump && Array.isArray(dump[k]) ? dump[k].length : null);
+          return {
+            ok: json.ok === true,
+            counts: {
+              bc_test_events: rows("bc_test_events"),
+              bc_demo_users: rows("bc_demo_users"),
+              bc_demo_vault: rows("bc_demo_vault"),
+            },
+            note: json.note || null,
+          };
+        }
+        if (attackId === "vault_decrypt") {
+          const dec = Array.isArray(json.decrypted) ? json.decrypted : null;
+          return { ok: json.ok === true, decrypted_count: dec ? dec.length : null, note: json.note || null };
+        }
+        if (attackId === "loot") {
+          return {
+            ok: json.ok === true,
+            loot_count: Array.isArray(json.loot) ? json.loot.length : null,
+            spamlist_count: Array.isArray(json.spamlist) ? json.spamlist.length : null,
+          };
+        }
+        if (attackId === "spam") {
+          return { ok: json.ok === true, email: typeof json.email === "string" ? json.email : null, note: json.note || null };
+        }
+
+        return redactJsonDeep(json, 3);
+      }
+
+      function explainStatus(attackId, target, status) {
+        const t = target === "secure" ? "protected" : "unprotected";
+        if (attackId === "db_write") {
+          if (target === "secure") {
+            if (status === 200) return "OK: gated write allowed (trusted).";
+            if (status === 403) return "BLOCKED: guard denied (expected when untrusted or boundary denies).";
+            if (status === 503) return "FAIL-CLOSED: TrustKernel blocked write due to trust issues.";
+            return "Unexpected status: check /health + logs.";
+          }
+          if (status === 200) return "VULNERABLE: an attacker can write to DB from web runtime.";
+          return "Unexpected status: unprotected stack may be misconfigured.";
+        }
+
+        if (attackId === "key_exfil" || attackId === "db_creds" || attackId === "pdo_bypass" || attackId === "db_dump" || attackId === "vault_decrypt") {
+          if (target === "secure") {
+            if (status === 403) return "BLOCKED: BlackCat guard prevented the bypass.";
+            if (status === 404) return "BLOCKED (surface reduced): no such route in protected demo.";
+            if (status === 200) return "CRITICAL: attack unexpectedly succeeded on protected target.";
+            if (status === 503) return "FAIL-CLOSED: protected target is untrusted; sensitive ops are disabled.";
+            return "Unexpected status on protected target.";
+          }
+          if (status === 200) return "VULNERABLE: the unprotected target exposes data/operations.";
+          return "Unexpected status on unprotected target.";
+        }
+
+        if (attackId === "spam" || attackId === "loot") {
+          if (target === "secure") {
+            if (status === 404) return "OK: protected target does not expose this attack surface.";
+            if (status === 403) return "BLOCKED: guard denied.";
+            return "Unexpected status on protected target.";
+          }
+          if (status === 200) return "VULNERABLE: attacker can store abusive data / collect loot.";
+          return "Unexpected status on unprotected target.";
+        }
+
+        return t + " HTTP " + status;
       }
 
       function shortHex(h) {
@@ -1163,12 +1420,12 @@
           setBadge("bSecureCrypto", "bad", "Fetch failed");
         }
 
-        // Insecure crypto + writes are intentionally not implemented; use DB write for control target.
+        // Control target: DB write is allowed (raw PDO) and is expected to succeed.
         try {
-          const { res } = await fetchJson(metaState.insecureBase + "/db/write");
-          setBadge("bInsecureWrite", res.status === 405 ? "warn" : "ok", res.status === 405 ? "Manual (POST required)" : "OK (writes possible)");
+          const { res } = await fetchAny(metaState.insecureBase + "/db/write", { method: "POST" }, 8000);
+          setBadge("bInsecureWrite", res.status === 200 ? "ok" : "bad", res.status === 200 ? "Vulnerable (write ok)" : "Unexpected (" + res.status + ")");
         } catch (e) {
-          setBadge("bInsecureWrite", "warn", "Not tested");
+          setBadge("bInsecureWrite", "bad", "Fetch failed");
         }
 
         try {
@@ -1181,6 +1438,74 @@
         setBadge("bInsecureCrypto", "warn", "See /leak/key (control)");
 
         renderScoreBars();
+      }
+
+      async function runAttack(attackId, target) {
+        const isSecure = target === "secure";
+        const base = isSecure ? "" : metaState.insecureBase;
+
+        const def = {
+          key_exfil: { path: isSecure ? "/bypass/keys" : "/leak/key", method: "GET", badge: isSecure ? "bSecureKey" : "bInsecureKey" },
+          db_creds: { path: isSecure ? "/bypass/db-creds" : "/leak/db", method: "GET", badge: isSecure ? "bSecureDbCreds" : "bInsecureDbCreds" },
+          pdo_bypass: { path: isSecure ? "/bypass/pdo" : "/bypass/pdo", method: "GET", badge: isSecure ? "bSecurePdo" : "bInsecurePdo" },
+          db_write: { path: "/db/write", method: "POST", badge: isSecure ? "bSecureWrite" : "bInsecureWrite" },
+          db_dump: { path: "/attack/dbdump", method: "GET", badge: null },
+          vault_decrypt: { path: "/attack/vault/decrypt-all", method: "GET", badge: null },
+          spam: { path: "/attack/spam", method: "POST", badge: null },
+          loot: { path: "/attack/loot", method: "GET", badge: null },
+        }[attackId];
+
+        if (!def) {
+          log("[attack] unknown: " + attackId);
+          return;
+        }
+
+        const url = base + def.path;
+        const label = (isSecure ? "protected" : "unprotected") + " " + def.method + " " + def.path;
+        log("[attack] " + attackId + " -> " + label);
+
+        if (!isSecure) {
+          const f = el("insecureFrame");
+          if (f) f.src = url;
+        }
+
+        try {
+          const opts = { method: def.method };
+          if (attackId === "spam") {
+            const email = (el("spamEmail") && el("spamEmail").value ? String(el("spamEmail").value) : "victim@example.com").trim();
+            opts.headers = { "Content-Type": "application/json" };
+            opts.body = JSON.stringify({ kind: "spam", email, source: "presentation_panel" });
+          }
+
+          const { res, json, text } = await fetchAny(url, opts, 12000);
+          const status = res.status;
+          const msg = explainStatus(attackId, target, status);
+
+          if (typeof def.badge === "string") {
+            let kind = "warn";
+            if (target === "secure") {
+              if (attackId === "db_write") {
+                kind = status === 200 ? "ok" : status === 403 || status === 503 ? "warn" : "bad";
+              } else {
+                kind = status === 403 || status === 404 ? "ok" : status === 200 ? "bad" : "warn";
+              }
+            } else {
+              kind = status === 200 ? "ok" : status === 405 ? "warn" : "bad";
+            }
+            setBadge(def.badge, kind, status + " (" + msg.replace(/[.]+$/, "") + ")");
+          }
+
+          const summary = summarizeAttack(attackId, json);
+          if (summary !== null) {
+            log("[attack] result HTTP " + status + " — " + msg);
+            log("[attack] summary: " + JSON.stringify(summary, null, 2));
+          } else {
+            log("[attack] result HTTP " + status + " — " + msg);
+            log("[attack] body: " + text.trim().slice(0, 200) + (text.length > 200 ? "…(truncated)" : ""));
+          }
+        } catch (e) {
+          log("[attack] ERROR: " + (e && e.message ? e.message : String(e)));
+        }
       }
 
       // ===== Guided demo (autopilot) =====
@@ -1282,6 +1607,40 @@
         log("[UI] soak refreshed");
       });
       bindClick("btnAutopilot", guidedDemo);
+      bindClick("btnClearLog", () => {
+        if (logEl) logEl.textContent = "Ready.";
+      });
+      bindClick("btnCopyLog", async () => {
+        try {
+          const t = logEl ? logEl.textContent : "";
+          if (!t) {
+            log("[ui] console empty");
+            return;
+          }
+          if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(t);
+            log("[ui] console copied to clipboard");
+            return;
+          }
+          throw new Error("clipboard not available");
+        } catch (e) {
+          log("[ui] copy failed: " + (e && e.message ? e.message : String(e)));
+        }
+      });
+
+      bindClick("btnAttackKeyInsecure", () => runAttack("key_exfil", "insecure"));
+      bindClick("btnAttackKeySecure", () => runAttack("key_exfil", "secure"));
+      bindClick("btnAttackDbCredsInsecure", () => runAttack("db_creds", "insecure"));
+      bindClick("btnAttackDbCredsSecure", () => runAttack("db_creds", "secure"));
+      bindClick("btnAttackPdoInsecure", () => runAttack("pdo_bypass", "insecure"));
+      bindClick("btnAttackPdoSecure", () => runAttack("pdo_bypass", "secure"));
+      bindClick("btnAttackWriteInsecure", () => runAttack("db_write", "insecure"));
+      bindClick("btnAttackWriteSecure", () => runAttack("db_write", "secure"));
+      bindClick("btnAttackDbDumpInsecure", () => runAttack("db_dump", "insecure"));
+      bindClick("btnAttackDbDumpSecure", () => runAttack("db_dump", "secure"));
+      bindClick("btnAttackSpamInsecure", () => runAttack("spam", "insecure"));
+      bindClick("btnAttackLootInsecure", () => runAttack("loot", "insecure"));
+      bindClick("btnAttackLootSecure", () => runAttack("loot", "secure"));
 
       bindClick("btnShowLeakKey", () => {
         const f = el("insecureFrame");
