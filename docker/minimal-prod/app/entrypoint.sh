@@ -551,7 +551,9 @@ if [ "$ENABLE_SECRETS_AGENT" = "1" ]; then
   '
 
   echo "[entrypoint] starting secrets agent (root) on unix socket" >&2
-  php /srv/blackcat/site/bin/secrets-agent.php &
+  # Note: the web runtime is restricted by open_basedir, but the secrets-agent may need limited
+  # access to `/proc` (peercred fallback) and `/usr/include` (best-effort SO_PEERCRED detection).
+  php -d "open_basedir=/srv/blackcat:/etc/blackcat:/var/lib/blackcat:/tmp:/var/tmp:/proc:/usr/include" /srv/blackcat/site/bin/secrets-agent.php &
   agent_pid="$!"
 
   # Fail-closed: do not continue boot if the agent is expected but not running.
