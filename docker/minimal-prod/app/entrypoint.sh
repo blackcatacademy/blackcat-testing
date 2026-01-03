@@ -622,7 +622,7 @@ DEMO_STATE_DIR="/etc/blackcat/demo"
 DEMO_STATE_PATH="${DEMO_STATE_DIR}/demo.state.json"
 mkdir -p "$DEMO_STATE_DIR" || true
 chmod 0750 "$DEMO_STATE_DIR" || true
-chgrp "$DEMO_STATE_DIR" www-data >/dev/null 2>&1 || true
+chgrp www-data "$DEMO_STATE_DIR" >/dev/null 2>&1 || true
 
 export BLACKCAT_DEMO_STATE_TAMPER_AFTER_SEC="$TAMPER_AFTER_SEC"
 export BLACKCAT_DEMO_STATE_TAMPER_KIND="$TAMPER_KIND"
