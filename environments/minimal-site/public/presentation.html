@@ -642,14 +642,46 @@
       const logEl = el("log");
       const log = (msg) => {
         const line = new Date().toISOString() + " " + msg;
-        logEl.textContent = line + "\\n" + logEl.textContent;
+        if (logEl) {
+          logEl.textContent = line + "\\n" + logEl.textContent;
+          if (logEl.textContent.length > 20000) {
+            logEl.textContent = logEl.textContent.slice(0, 20000);
+          }
+        } else {
+          // eslint-disable-next-line no-console
+          console.log(line);
+        }
       };
 
       const setBadge = (id, kind, text) => {
         const b = el(id);
+        if (!b) {
+          log("[ui] missing element #" + id);
+          return;
+        }
         b.className = "badge " + kind;
         b.textContent = text;
       };
+
+      // Make failures visible (this page is for investors; "buttons do nothing" is unacceptable).
+      window.addEventListener("error", (ev) => {
+        const msg = ev && typeof ev.message === "string" ? ev.message : "unknown_error";
+        const loc = ev && typeof ev.filename === "string" ? " @ " + ev.filename + ":" + ev.lineno + ":" + ev.colno : "";
+        log("[js] ERROR: " + msg + loc);
+        const t = el("trustTitle");
+        if (t && t.textContent === "Loading…") {
+          t.textContent = "JS error (see log)";
+        }
+      });
+      window.addEventListener("unhandledrejection", (ev) => {
+        const reason = ev && ev.reason ? ev.reason : null;
+        const msg = reason && typeof reason.message === "string" ? reason.message : String(reason || "unknown_rejection");
+        log("[js] UNHANDLED REJECTION: " + msg);
+        const t = el("trustTitle");
+        if (t && t.textContent === "Loading…") {
+          t.textContent = "JS error (see log)";
+        }
+      });
 
       const metaState = {
         insecureBase: "http://localhost:8089",
@@ -844,6 +876,7 @@
       }
       function renderTimeline() {
         const c = el("timeline");
+        if (!c || typeof c.getContext !== "function") return;
         const ctx = c.getContext("2d");
         if (!ctx) return;
         const w = c.width;
@@ -1107,7 +1140,11 @@
       // ===== Guided demo (autopilot) =====
       async function guidedDemo() {
         const btn = el("btnAutopilot");
-        btn.disabled = true;
+        if (btn) {
+          btn.disabled = true;
+        } else {
+          log("[ui] missing element #btnAutopilot");
+        }
         try {
           log("[DEMO] Step 1/6: show unprotected key exfiltration");
           el("insecureFrame").src = metaState.insecureBase + "/leak/key";
@@ -1152,11 +1189,20 @@
         } catch (e) {
           log("[DEMO] ERROR: " + (e && e.message ? e.message : String(e)));
         } finally {
-          btn.disabled = false;
+          if (btn) btn.disabled = false;
         }
       }
 
-      el("btnRefresh").addEventListener("click", async () => {
+      function bindClick(id, fn) {
+        const e = el(id);
+        if (!e) {
+          log("[ui] missing button #" + id);
+          return;
+        }
+        e.addEventListener("click", fn);
+      }
+
+      bindClick("btnRefresh", async () => {
         await refreshMeta();
         await refreshHealth();
         await refreshProbes();
@@ -1164,25 +1210,30 @@
         await refreshSoak();
         log("[UI] refreshed");
       });
-      el("btnRefreshOutbox").addEventListener("click", async () => {
+      bindClick("btnRefreshOutbox", async () => {
         await refreshOutbox();
         log("[UI] outbox refreshed");
       });
-      el("btnRefreshSoak").addEventListener("click", async () => {
+      bindClick("btnRefreshSoak", async () => {
         await refreshSoak();
         log("[UI] soak refreshed");
       });
-      el("btnAutopilot").addEventListener("click", guidedDemo);
+      bindClick("btnAutopilot", guidedDemo);
 
-      el("btnShowLeakKey").addEventListener("click", () => {
-        el("insecureFrame").src = metaState.insecureBase + "/leak/key";
+      bindClick("btnShowLeakKey", () => {
+        const f = el("insecureFrame");
+        if (f) f.src = metaState.insecureBase + "/leak/key";
       });
-      el("btnShowLeakDb").addEventListener("click", () => {
-        el("insecureFrame").src = metaState.insecureBase + "/leak/db";
+      bindClick("btnShowLeakDb", () => {
+        const f = el("insecureFrame");
+        if (f) f.src = metaState.insecureBase + "/leak/db";
       });
 
       // Boot
       (async () => {
+        const title = el("trustTitle");
+        if (title) title.textContent = "JS starting…";
+
         const poll = (() => {
           let healthInFlight = false;
           let outboxInFlight = false;
