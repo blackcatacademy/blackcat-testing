@@ -1672,6 +1672,8 @@ while (true) {
         auditAppend($auditChain, 'secrets_agent.error', $actor, ['op' => (string) $op, 'error' => $e->getMessage()]);
         fwrite($conn, json_encode(['ok' => false, 'error' => 'agent_error:' . $e->getMessage()]) . "\n");
     } finally {
-        fclose($conn);
+        if (is_resource($conn)) {
+            fclose($conn);
+        }
     }
 }
