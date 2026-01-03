@@ -738,21 +738,25 @@
           </div>
         </div>
 
-        <div class="card">
+          <div class="card">
           <div class="row" style="justify-content: space-between">
             <div class="row">
               <span class="pill"><strong>Scenario switchboard</strong></span>
-              <span class="pill">copy → run in terminal</span>
+              <span class="pill">run now (localhost)</span>
+              <span class="pill">operator: <strong id="opStatus">?</strong></span>
               <span class="pill">startup-armed only</span>
             </div>
             <div class="row">
-              <button class="btnPrimary" id="btnCopyResetTrusted">Copy: reset to trusted</button>
-              <button id="btnCopyResetHard">Copy: hard reset (wipe volumes)</button>
+              <button class="btnPrimary" id="btnRunResetTrusted">Run: reset to trusted</button>
+              <button class="btnDanger" id="btnRunResetHard">Run: hard reset</button>
+              <button id="btnCopyResetTrusted">Copy cmd</button>
+              <button id="btnCopyResetHard">Copy cmd</button>
             </div>
           </div>
           <div class="muted">
             These scenarios are <strong>armed at container startup</strong> (Docker env overrides) so the protected web runtime cannot “press a button” to tamper itself.
-            Use the copy buttons and run the commands on your host (WSL/Linux/macOS terminal). Then refresh this page.
+            <span class="k">Run</span> uses a localhost-only demo operator that restarts containers with the chosen scenario (the kernel never gets Docker access).
+            If the operator is unavailable, use <span class="k">Copy</span> and run commands on your host terminal.
           </div>
 
           <div class="statsGrid" aria-label="scenario state">
@@ -781,7 +785,8 @@
                 Modifies a file under the integrity root after 40s. Expected: <span class="k">trusted_now</span> flips and sensitive ops fail-closed.
               </div>
               <div class="row" style="margin-top: 8px">
-                <button class="btnDanger" id="btnCopyScenarioFsTamper">Copy run command</button>
+                <button class="btnDanger" id="btnRunScenarioFsTamper">Run now</button>
+                <button id="btnCopyScenarioFsTamper">Copy cmd</button>
               </div>
             </div>
 
@@ -791,7 +796,8 @@
                 Mutates <span class="k">/etc/blackcat/config.runtime.json</span> after 40s. Expected: config attestation mismatch → fail-closed.
               </div>
               <div class="row" style="margin-top: 8px">
-                <button class="btnDanger" id="btnCopyScenarioConfigTamper">Copy run command</button>
+                <button class="btnDanger" id="btnRunScenarioConfigTamper">Run now</button>
+                <button id="btnCopyScenarioConfigTamper">Copy cmd</button>
               </div>
             </div>
 
@@ -801,7 +807,8 @@
                 Mutates <span class="k">/etc/blackcat/integrity.manifest.json</span>. Expected: integrity verification fails → fail-closed.
               </div>
               <div class="row" style="margin-top: 8px">
-                <button class="btnDanger" id="btnCopyScenarioManifestTamper">Copy run command</button>
+                <button class="btnDanger" id="btnRunScenarioManifestTamper">Run now</button>
+                <button id="btnCopyScenarioManifestTamper">Copy cmd</button>
               </div>
             </div>
 
@@ -811,7 +818,8 @@
                 Swaps the controller address in runtime-config. Expected: chain state mismatch / trust breaks immediately.
               </div>
               <div class="row" style="margin-top: 8px">
-                <button class="btnDanger" id="btnCopyScenarioControllerSwap">Copy run command</button>
+                <button class="btnDanger" id="btnRunScenarioControllerSwap">Run now</button>
+                <button id="btnCopyScenarioControllerSwap">Copy cmd</button>
               </div>
             </div>
 
@@ -821,7 +829,8 @@
                 Poisons <span class="k">/etc/hosts</span> for <span class="k">rpc.layeredge.io</span> after 30s. Expected: RPC fails → unsafe writes blocked; reads may degrade depending on policy.
               </div>
               <div class="row" style="margin-top: 8px">
-                <button class="btnDanger" id="btnCopyScenarioRpcOutage">Copy run command</button>
+                <button class="btnDanger" id="btnRunScenarioRpcOutage">Run now</button>
+                <button id="btnCopyScenarioRpcOutage">Copy cmd</button>
               </div>
             </div>
 
@@ -831,7 +840,8 @@
                 Uses a local RPC proxy + quorum=2. One endpoint sabotages after 30s. Expected: byzantine/outage detected; kernel refuses unsafe operations.
               </div>
               <div class="row" style="margin-top: 8px">
-                <button class="btnDanger" id="btnCopyScenarioByzantineRpc">Copy run command</button>
+                <button class="btnDanger" id="btnRunScenarioByzantineRpc">Run now</button>
+                <button id="btnCopyScenarioByzantineRpc">Copy cmd</button>
               </div>
             </div>
           </div>
@@ -1210,6 +1220,8 @@
         controller: null,
         tamperAfterSec: null,
         tamperKind: null,
+        operatorUrl: null,
+        operatorToken: null,
       };
 
       const pitchState = {
@@ -1531,6 +1543,72 @@
         scenario.composeBase +
         " \\\n  -f blackcat-testing/docker/minimal-prod/docker-compose.byzantine-rpc.yml\n  up -d --build --force-recreate app runner\n";
 
+      async function operatorRunScenario(scenarioKey, label) {
+        const opUrl = metaState.operatorUrl;
+        const opToken = metaState.operatorToken;
+        if (!opUrl || !opToken) {
+          log("[operator] not available (missing operator_url/operator_token). Use Copy → run in terminal.", "warn");
+          return;
+        }
+
+        const url = opUrl.replace(/\/+$/, "") + "/run";
+        log("[operator] run: " + scenarioKey + (label ? " (" + label + ")" : ""), "meta");
+
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            cache: "no-store",
+            headers: {
+              "Content-Type": "application/json",
+              "X-BlackCat-Operator-Token": opToken,
+            },
+            body: JSON.stringify({ scenario: scenarioKey }),
+          });
+          const j = await res.json().catch(() => null);
+          if (!res.ok) {
+            const err = j && typeof j.error === "string" ? j.error : "http_" + String(res.status);
+            log("[operator] failed: " + err, "warn");
+            if (j) {
+              log("[operator] response: " + JSON.stringify(j).slice(0, 2000), "warn");
+            }
+            return;
+          }
+          log("[operator] ok. Restarting containers…", "ok");
+        } catch (e) {
+          log("[operator] request error: " + (e && e.message ? e.message : String(e)), "warn");
+          return;
+        }
+
+        // The app may restart; wait until /health responds again.
+        const start = Date.now();
+        let ready = false;
+        while (Date.now() - start < 60_000) {
+          try {
+            const r = await fetch("/health", { cache: "no-store" });
+            if (r && r.ok) {
+              ready = true;
+              break;
+            }
+          } catch (e) {
+            // ignore
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        if (!ready) {
+          log("[operator] WARN: app did not become ready within 60s (try Refresh).", "warn");
+        }
+
+        try {
+          await refreshMeta();
+          await refreshHealth();
+          await refreshProbes();
+          await refreshOutbox();
+          await refreshSoak();
+        } catch (e) {
+          log("[operator] refresh failed: " + (e && e.message ? e.message : String(e)), "warn");
+        }
+      }
+
       async function refreshMeta() {
         try {
           const { json } = await fetchJson("/demo/meta");
@@ -1540,6 +1618,8 @@
           metaState.chainId = typeof json.chain_id === "number" ? json.chain_id : null;
           metaState.controller = typeof json.instance_controller === "string" ? json.instance_controller : null;
           metaState.explorerBase = typeof json.explorer_base_url === "string" ? json.explorer_base_url : null;
+          metaState.operatorUrl = json && typeof json.operator_url === "string" && json.operator_url.trim() !== "" ? json.operator_url.trim() : null;
+          metaState.operatorToken = json && typeof json.operator_token === "string" && json.operator_token.trim() !== "" ? json.operator_token.trim() : null;
           metaState.tamperAfterSec =
             typeof json.demo === "object" && json.demo && typeof json.demo.tamper_after_sec === "number" ? json.demo.tamper_after_sec : null;
           metaState.tamperKind =
@@ -1634,11 +1714,24 @@
               2
             );
           }
+
+          const op = el("opStatus");
+          if (op) {
+            if (metaState.operatorUrl && metaState.operatorToken) {
+              op.textContent = "ready";
+            } else if (metaState.operatorUrl && !metaState.operatorToken) {
+              op.textContent = "no token";
+            } else {
+              op.textContent = "offline";
+            }
+          }
         } catch (e) {
           metaState.insecureBase = deriveInsecureBaseFromHost();
           el("lnkInsecure").href = metaState.insecureBase + "/start";
           el("insecureSrc").textContent = metaState.insecureBase + "/start";
           el("insecureFrame").src = metaState.insecureBase + "/start";
+          const op = el("opStatus");
+          if (op) op.textContent = "offline";
           log("[meta] fetch failed: " + (e && e.message ? e.message : String(e)));
         }
       }
@@ -2280,6 +2373,15 @@
       bindClick("btnCopyScenarioControllerSwap", () => copyText(scenario.controllerSwap, "controller swap"));
       bindClick("btnCopyScenarioRpcOutage", () => copyText(scenario.rpcOutage, "rpc outage"));
       bindClick("btnCopyScenarioByzantineRpc", () => copyText(scenario.byzantineRpc, "byzantine rpc"));
+
+      bindClick("btnRunResetTrusted", () => operatorRunScenario("reset_trusted", "reset to trusted"));
+      bindClick("btnRunResetHard", () => operatorRunScenario("reset_hard", "hard reset"));
+      bindClick("btnRunScenarioFsTamper", () => operatorRunScenario("filesystem_tamper", "filesystem tamper"));
+      bindClick("btnRunScenarioConfigTamper", () => operatorRunScenario("config_tamper", "config tamper"));
+      bindClick("btnRunScenarioManifestTamper", () => operatorRunScenario("manifest_tamper", "manifest tamper"));
+      bindClick("btnRunScenarioControllerSwap", () => operatorRunScenario("controller_swap", "controller swap"));
+      bindClick("btnRunScenarioRpcOutage", () => operatorRunScenario("rpc_outage", "rpc outage"));
+      bindClick("btnRunScenarioByzantineRpc", () => operatorRunScenario("byzantine_rpc", "byzantine rpc"));
 
       bindClick("btnAttackKeyInsecure", () => runAttack("key_exfil", "insecure"));
       bindClick("btnAttackKeySecure", () => runAttack("key_exfil", "secure"));

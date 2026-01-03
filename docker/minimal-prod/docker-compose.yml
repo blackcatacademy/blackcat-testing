@@ -6,13 +6,30 @@ services:
       MARIADB_USER: blackcat
       MARIADB_PASSWORD: blackcat
       MARIADB_ROOT_PASSWORD: root
-    volumes:
-      - ./db/init.sql:/docker-entrypoint-initdb.d/01-blackcat-testing.sql:ro
     healthcheck:
       test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
       interval: 2s
       timeout: 2s
       retries: 30
+
+  db_init:
+    image: mariadb:11
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -lc
+      - |
+        set -e
+        echo "[db_init] creating read-only DB user (if missing)"
+        mariadb -h db -uroot -proot blackcat_test -e "
+          CREATE USER IF NOT EXISTS 'blackcat_ro'@'%' IDENTIFIED BY 'blackcat_ro';
+          GRANT SELECT, SHOW VIEW ON blackcat_test.* TO 'blackcat_ro'@'%';
+          FLUSH PRIVILEGES;
+        "
+        echo "[db_init] done"
+    restart: "no"
 
   app:
     build:
@@ -45,7 +62,9 @@ services:
       # Default: do NOT auto-tamper. Enable explicitly for the fail-closed demo.
       BLACKCAT_TESTING_TAMPER_AFTER_SEC: "${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
       BLACKCAT_TESTING_TAMPER_KIND: "${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
+      # Addresses-only list for the investor demo. Prefer env list; fallback is a baked-in JSON file.
       BLACKCAT_TESTING_DEMO_WALLETS: "${BLACKCAT_TESTING_DEMO_WALLETS:-}"
+      BLACKCAT_TESTING_DEMO_WALLETS_FILE: "${BLACKCAT_TESTING_DEMO_WALLETS_FILE:-/opt/blackcat/demo-public/demo.wallets.public.json}"
       BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC: "${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
       BLACKCAT_TESTING_LOCAL_RPC_PROXY: "${BLACKCAT_TESTING_LOCAL_RPC_PROXY:-0}"
       BLACKCAT_TESTING_RPC_PROXY_PORT: "${BLACKCAT_TESTING_RPC_PROXY_PORT:-8545}"
@@ -59,6 +78,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db_init:
+        condition: service_completed_successfully
 
   runner:
     image: minimal-prod-app
@@ -104,7 +125,7 @@ services:
       EXPECT_STALE_READS_ON_RPC_OUTAGE: "${EXPECT_STALE_READS_ON_RPC_OUTAGE:-0}"
       EXPECT_HEALTH_DOWN_AFTER_TAMPER: "${EXPECT_HEALTH_DOWN_AFTER_TAMPER:-0}"
     volumes:
-      - ../../var/harness/minimal-prod/logs:/var/log/blackcat-testing
+      - blackcat_harness_logs:/var/log/blackcat-testing
     depends_on:
       db:
         condition: service_healthy
@@ -114,3 +135,6 @@ services:
 volumes:
   blackcat_etc: {}
   blackcat_var: {}
+  blackcat_harness_logs: {}
+  blackcat_harness_reports: {}
+  blackcat_operator_shared: {}

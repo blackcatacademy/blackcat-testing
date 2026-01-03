@@ -60,6 +60,18 @@ if (is_file($demoStatePath) && !is_link($demoStatePath) && is_readable($demoStat
 $insecureUrlRaw = getenv('BLACKCAT_TESTING_INSECURE_URL');
 $insecureUrl = is_string($insecureUrlRaw) && trim($insecureUrlRaw) !== '' ? trim($insecureUrlRaw) : 'http://localhost:8089/';
 
+$operatorUrlRaw = getenv('BLACKCAT_TESTING_OPERATOR_URL');
+$operatorUrl = is_string($operatorUrlRaw) && trim($operatorUrlRaw) !== '' ? trim($operatorUrlRaw) : 'http://localhost:8091';
+
+$operatorTokenPath = '/var/lib/blackcat/operator/operator.token';
+$operatorToken = null;
+if (is_file($operatorTokenPath) && !is_link($operatorTokenPath) && is_readable($operatorTokenPath)) {
+    $raw = @file_get_contents($operatorTokenPath);
+    if (is_string($raw) && trim($raw) !== '') {
+        $operatorToken = trim($raw);
+    }
+}
+
 $demo = [
     'tamper_after_sec' => null,
     'tamper_kind' => null,
@@ -112,6 +124,8 @@ $meta = [
     'instance_controller' => is_string($controller) && trim($controller) !== '' ? trim($controller) : null,
     'explorer_base_url' => null,
     'insecure_demo_url' => $insecureUrl,
+    'operator_url' => $operatorUrl,
+    'operator_token' => $operatorToken,
     'demo' => $demo,
 ];
 

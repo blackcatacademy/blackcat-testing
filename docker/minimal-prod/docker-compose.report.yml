@@ -10,5 +10,5 @@ services:
     volumes:
       - blackcat_etc:/etc/blackcat:ro
       - blackcat_var:/var/lib/blackcat:ro
-      - ../../var/harness/minimal-prod/logs:/var/lib/blackcat/harness/logs:ro
-      - ../../var/harness/minimal-prod/reports:/var/lib/blackcat/harness/reports
+      - blackcat_harness_logs:/var/lib/blackcat/harness/logs:ro
+      - blackcat_harness_reports:/var/lib/blackcat/harness/reports

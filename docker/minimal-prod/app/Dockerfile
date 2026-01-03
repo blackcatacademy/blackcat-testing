@@ -38,6 +38,11 @@ COPY blackcat-testing/src/ /srv/blackcat/src/
 COPY blackcat-testing/environments/minimal-site/ /srv/blackcat/site/
 # Static assets for demo UI.
 COPY blackcat-testing/assets/ /srv/blackcat/site/public/assets/
+
+# Public demo wallets list (addresses only). Used as a fallback by the entrypoint.
+RUN mkdir -p /opt/blackcat/demo-public
+COPY blackcat-testing/var/demo/public/demo.wallets.public.json /opt/blackcat/demo-public/demo.wallets.public.json
+
 COPY --from=builder /workspace/blackcat-core/ /srv/blackcat-core/
 COPY --from=builder /workspace/blackcat-config/ /srv/blackcat-config/
 

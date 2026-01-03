@@ -2,14 +2,12 @@ services:
   app:
     environment:
       BLACKCAT_TESTING_INSECURE_URL: "${BLACKCAT_TESTING_INSECURE_URL:-http://localhost:8089/}"
-      BLACKCAT_TESTING_DEMO_WALLETS_FILE: "${BLACKCAT_TESTING_DEMO_WALLETS_FILE:-/etc/blackcat/demo-public/demo.wallets.public.json}"
     volumes:
-      # Public demo wallet addresses (NO private keys). Mounted read-only.
-      # Keep /etc/blackcat/demo writable for demo runtime state (e.g., demo.state.json).
-      - ../../var/demo/public:/etc/blackcat/demo-public:ro
       # Presentation-only: expose attacker harness logs/reports inside open_basedir-safe roots.
-      - ../../var/harness/minimal-prod/logs:/var/lib/blackcat/harness/logs:ro
-      - ../../var/harness/minimal-prod/reports:/var/lib/blackcat/harness/reports
+      - blackcat_harness_logs:/var/lib/blackcat/harness/logs:ro
+      - blackcat_harness_reports:/var/lib/blackcat/harness/reports
+      # Localhost-only demo operator token (read-only in the web runtime).
+      - blackcat_operator_shared:/var/lib/blackcat/operator:ro
 
   insecure:
     build:
@@ -24,3 +22,32 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  operator:
+    build:
+      context: .
+      dockerfile: operator/Dockerfile
+    environment:
+      BLACKCAT_OPERATOR_PROJECT: "${BLACKCAT_OPERATOR_PROJECT:-minimal-prod}"
+      BLACKCAT_OPERATOR_ALLOW_ORIGIN: "${BLACKCAT_OPERATOR_ALLOW_ORIGIN:-http://localhost:8088}"
+      BLACKCAT_OPERATOR_TIMEOUT_SEC: "${BLACKCAT_OPERATOR_TIMEOUT_SEC:-600}"
+      BLACKCAT_OPERATOR_COMPOSE_DIR: "${BLACKCAT_OPERATOR_COMPOSE_DIR:-/opt/blackcat-operator/compose}"
+      BLACKCAT_OPERATOR_TOKEN_FILE: "${BLACKCAT_OPERATOR_TOKEN_FILE:-/var/lib/blackcat/operator/operator.token}"
+    ports:
+      - "127.0.0.1:8091:8090"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - blackcat_operator_shared:/var/lib/blackcat/operator
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - operator_net
+
+networks:
+  operator_net: {}
