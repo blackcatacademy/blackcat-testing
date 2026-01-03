@@ -832,7 +832,7 @@
         try {
           const { json } = await fetchJson("/demo/meta");
           const insecure = json && typeof json.insecure_demo_url === "string" ? json.insecure_demo_url : null;
-          const base = insecure ? insecure.replace(/\\/+$/, "") : null;
+          const base = insecure ? insecure.replace(/\/+$/, "") : null;
           metaState.insecureBase = base || deriveInsecureBaseFromHost();
           metaState.chainId = typeof json.chain_id === "number" ? json.chain_id : null;
           metaState.controller = typeof json.instance_controller === "string" ? json.instance_controller : null;
@@ -851,7 +851,7 @@
 
           if (metaState.controller && metaState.explorerBase) {
             el("controllerLink").textContent = shortHex(metaState.controller);
-            el("controllerLink").href = metaState.explorerBase.replace(/\\/+$/, "") + "/address/" + metaState.controller;
+            el("controllerLink").href = metaState.explorerBase.replace(/\/+$/, "") + "/address/" + metaState.controller;
           } else if (metaState.controller) {
             el("controllerLink").textContent = shortHex(metaState.controller);
             el("controllerLink").href = "#";
