@@ -252,6 +252,8 @@
 
     <script>
       const el = (id) => document.getElementById(id);
+      let lastOutboxText = null;
+      let lastOutboxOkAtMs = null;
 
       async function fetchJson(url, timeoutMs) {
         const controller = new AbortController();
@@ -303,10 +305,25 @@
         }
 
         try {
-          const { json } = await fetchJson("/demo/tx-outbox");
-          outboxEl.textContent = JSON.stringify(json, null, 2);
+          const { json } = await fetchJson("/demo/tx-outbox", 12000);
+          const text = JSON.stringify(json, null, 2);
+          outboxEl.textContent = text;
+          lastOutboxText = text;
+          lastOutboxOkAtMs = Date.now();
         } catch (e) {
-          outboxEl.textContent = JSON.stringify({ ok: false, error: String(e) }, null, 2);
+          const err = String(e);
+          if (typeof lastOutboxText === "string" && lastOutboxText !== "") {
+            const ageMs = typeof lastOutboxOkAtMs === "number" ? Date.now() - lastOutboxOkAtMs : null;
+            const age = typeof ageMs === "number" ? Math.max(0, Math.floor(ageMs / 1000)) : null;
+            outboxEl.textContent =
+              lastOutboxText +
+              "\n\n// NOTE: outbox refresh failed (" +
+              err +
+              ")" +
+              (typeof age === "number" ? " — showing stale data (" + age + "s old)" : "");
+          } else {
+            outboxEl.textContent = JSON.stringify({ ok: false, error: err }, null, 2);
+          }
         }
       }
 
@@ -340,4 +357,3 @@
     </script>
   </body>
 </html>
-

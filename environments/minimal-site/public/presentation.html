@@ -708,6 +708,8 @@
           lastTrusted: null,
         },
         outbox: {
+          lastText: null,
+          lastOkAtMs: null,
           lastCountsJson: null,
         },
       };
@@ -802,9 +804,9 @@
         }
       }
 
-      async function fetchJson(url) {
+      async function fetchJson(url, timeoutMs) {
         const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 2500);
+        const timer = window.setTimeout(() => controller.abort(), typeof timeoutMs === "number" ? timeoutMs : 2500);
         let res;
         let text = "";
         try {
@@ -910,7 +912,7 @@
 
       async function refreshHealth() {
         try {
-          const { json } = await fetchJson("/health");
+          const { json } = await fetchJson("/health", 12000);
           const t = json && json.trust ? json.trust : null;
           const trusted = t && t.trusted_now === true;
           const rpcOk = t && t.rpc_ok_now === true;
@@ -953,15 +955,23 @@
           pitchState.story.lastTrusted = trusted;
           renderStory();
         } catch (e) {
-          el("trustTitle").textContent = "Health fetch failed";
-          el("dotTrust").className = "dot bad";
+          const err = e && e.message ? e.message : String(e);
+          log("[health] fetch failed: " + err);
+          const title = el("trustTitle");
+          if (title && title.textContent === "Loading…") {
+            title.textContent = "Health fetch failed (see log)";
+          }
         }
       }
 
       async function refreshOutbox() {
         try {
-          const { json } = await fetchJson("/demo/tx-outbox");
-          el("outbox").textContent = JSON.stringify(json, null, 2);
+          const { json } = await fetchJson("/demo/tx-outbox", 12000);
+          const text = JSON.stringify(json, null, 2);
+          const out = el("outbox");
+          if (out) out.textContent = text;
+          pitchState.outbox.lastText = text;
+          pitchState.outbox.lastOkAtMs = Date.now();
 
           // Detect queued incident intents/signature requests.
           const latest = json && typeof json.latest === "object" ? json.latest : null;
@@ -999,13 +1009,31 @@
             renderStory();
           }
         } catch (e) {
-          el("outbox").textContent = JSON.stringify({ ok: false, error: "outbox_fetch_failed" }, null, 2);
+          const err = e && e.message ? e.message : String(e);
+          log("[outbox] fetch failed: " + err);
+
+          const out = el("outbox");
+          if (!out) return;
+
+          if (typeof pitchState.outbox.lastText === "string" && pitchState.outbox.lastText !== "") {
+            const ageMs = typeof pitchState.outbox.lastOkAtMs === "number" ? Date.now() - pitchState.outbox.lastOkAtMs : null;
+            const age = typeof ageMs === "number" ? Math.max(0, Math.floor(ageMs / 1000)) : null;
+            out.textContent =
+              pitchState.outbox.lastText +
+              "\n\n// NOTE: outbox refresh failed (" +
+              err +
+              ")" +
+              (typeof age === "number" ? " — showing stale data (" + age + "s old)" : "");
+            return;
+          }
+
+          out.textContent = JSON.stringify({ ok: false, error: "outbox_fetch_failed", detail: err }, null, 2);
         }
       }
 
       async function refreshSoak() {
         try {
-          const { json } = await fetchJson("/demo/soak/latest");
+          const { json } = await fetchJson("/demo/soak/latest", 8000);
           el("soak").textContent = JSON.stringify(json, null, 2);
         } catch (e) {
           el("soak").textContent = JSON.stringify({ ok: false, error: "soak_fetch_failed" }, null, 2);
