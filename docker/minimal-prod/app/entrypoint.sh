@@ -48,6 +48,8 @@ ROOT_DIR="/srv/blackcat"
 MANIFEST_PATH="/etc/blackcat/integrity.manifest.json"
 CONFIG_PATH="/etc/blackcat/config.runtime.json"
 TAMPER_MARKER="/etc/blackcat/.blackcat_testing_tamper_done"
+RPC_SABOTAGE_MARKER="/etc/blackcat/.blackcat_testing_rpc_sabotage_done"
+RPC_PROXY_SABOTAGE_MARKER="/etc/blackcat/.blackcat_testing_rpc_proxy_sabotage_done"
 NO_REPROVISION_MARKER="/etc/blackcat/.blackcat_testing_disable_reprovision"
 
 CHAIN_ID="${BLACKCAT_TRUST_CHAIN_ID:-4207}"
@@ -613,6 +615,20 @@ if [ -f "$TAMPER_MARKER" ]; then
   else
     echo "[entrypoint] tamper marker exists, disabling tamper scheduling: ${TAMPER_MARKER}" >&2
     TAMPER_AFTER_SEC="0"
+  fi
+fi
+
+if [ -f "$RPC_SABOTAGE_MARKER" ]; then
+  if [ "$FORCE_PROVISION" = "1" ] || [ "$RPC_SABOTAGE_AFTER_SEC" = "0" ] || [ "$RPC_SABOTAGE_AFTER_SEC" = "" ]; then
+    echo "[entrypoint] clearing rpc sabotage marker: ${RPC_SABOTAGE_MARKER}" >&2
+    rm -f "$RPC_SABOTAGE_MARKER" >/dev/null 2>&1 || true
+  fi
+fi
+
+if [ -f "$RPC_PROXY_SABOTAGE_MARKER" ]; then
+  if [ "$FORCE_PROVISION" = "1" ] || [ "$RPC_PROXY_SABOTAGE_AFTER_SEC" = "0" ] || [ "$RPC_PROXY_SABOTAGE_AFTER_SEC" = "" ]; then
+    echo "[entrypoint] clearing rpc proxy sabotage marker: ${RPC_PROXY_SABOTAGE_MARKER}" >&2
+    rm -f "$RPC_PROXY_SABOTAGE_MARKER" >/dev/null 2>&1 || true
   fi
 fi
 

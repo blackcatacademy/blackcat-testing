@@ -188,6 +188,18 @@ if ($code < 200 || $code >= 300) {
 $now = time();
 $sabotage = $sabotageAfter > 0 && $startedAt > 0 && ($now - $startedAt) >= $sabotageAfter;
 
+if ($sabotage) {
+    $markerPath = '/etc/blackcat/.blackcat_testing_rpc_proxy_sabotage_done';
+    if (!is_file($markerPath) && !is_link($markerPath)) {
+        @file_put_contents(
+            $markerPath,
+            "rpc proxy sabotage active " . gmdate('c') . " after_sec=" . $sabotageAfter . "\n"
+        );
+        @chmod($markerPath, 0640);
+        @chgrp($markerPath, 'www-data');
+    }
+}
+
 if ($sabotage && $method !== null && $method !== 'eth_chainId') {
     try {
         /** @var mixed $resp */

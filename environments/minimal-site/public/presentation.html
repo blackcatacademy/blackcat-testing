@@ -946,6 +946,7 @@
               <span class="pill"><strong id="trustTitle">Loading…</strong></span>
               <span class="pill">enforcement: <strong id="enf">?</strong></span>
               <span class="pill">tamper: <strong id="tamperInfo">?</strong></span>
+              <span class="pill">rpc_sabotage: <strong id="rpcSabotageInfo">?</strong></span>
               <span class="pill">rpc_ok: <strong id="rpcOk">?</strong></span>
               <span class="pill">read_allowed: <strong id="readAllowed">?</strong></span>
               <span class="pill">write_allowed: <strong id="writeAllowed">?</strong></span>
@@ -1005,7 +1006,7 @@
             </div>
             <div class="stat">
               <div class="statLabel">RPC sabotage</div>
-              <div id="scRpcSabotage" class="statVal">?</div>
+              <div id="scRpcSabotage" class="statVal multiline">?</div>
             </div>
           </div>
 
@@ -1312,7 +1313,7 @@
               <div id="soakRpcOk" class="statVal">?</div>
             </div>
             <div class="stat">
-              <div class="statLabel">Tamper</div>
+              <div class="statLabel">Disruptions</div>
               <div id="soakTamper" class="statVal multiline">?</div>
             </div>
           </div>
@@ -1466,6 +1467,12 @@
         tamperArmedAtUnix: null,
         tamperMarkerExists: null,
         tamperMarkerMtimeUnix: null,
+        rpcSabotageAfterSec: null,
+        rpcSabotageMarkerExists: null,
+        rpcSabotageMarkerMtimeUnix: null,
+        rpcProxySabotageAfterSec: null,
+        rpcProxySabotageMarkerExists: null,
+        rpcProxySabotageMarkerMtimeUnix: null,
         operatorUrl: null,
         operatorToken: null,
       };
@@ -1533,6 +1540,31 @@
         const executed = metaState.tamperMarkerExists === true;
         if (typeof after === "number" && after > 0) {
           return executed ? "executed / " + (kind || "unknown") : "armed / " + (kind || "unknown") + " @ " + after + "s";
+        }
+        if (typeof after === "number" && after === 0) return "disabled";
+        return "unknown";
+      }
+
+      function formatUnixTs(tsUnix) {
+        if (!(typeof tsUnix === "number" && Number.isFinite(tsUnix) && tsUnix > 0)) return null;
+        return new Date(tsUnix * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+      }
+
+      function rpcSabotageLabel(kind) {
+        const after = kind === "proxy" ? metaState.rpcProxySabotageAfterSec : metaState.rpcSabotageAfterSec;
+        const executed = kind === "proxy" ? metaState.rpcProxySabotageMarkerExists === true : metaState.rpcSabotageMarkerExists === true;
+        const executedAtUnix =
+          kind === "proxy"
+            ? typeof metaState.rpcProxySabotageMarkerMtimeUnix === "number"
+              ? metaState.rpcProxySabotageMarkerMtimeUnix
+              : null
+            : typeof metaState.rpcSabotageMarkerMtimeUnix === "number"
+              ? metaState.rpcSabotageMarkerMtimeUnix
+              : null;
+
+        if (typeof after === "number" && after > 0) {
+          const ts = formatUnixTs(executedAtUnix);
+          return executed ? "executed" + (ts ? " @ " + ts : "") : "armed @ +" + after + "s";
         }
         if (typeof after === "number" && after === 0) return "disabled";
         return "unknown";
@@ -2014,6 +2046,28 @@
             typeof json.demo === "object" && json.demo && typeof json.demo.tamper_marker_mtime_unix === "number"
               ? json.demo.tamper_marker_mtime_unix
               : null;
+          metaState.rpcSabotageAfterSec =
+            typeof json.demo === "object" && json.demo && typeof json.demo.rpc_sabotage_after_sec === "number" ? json.demo.rpc_sabotage_after_sec : null;
+          metaState.rpcSabotageMarkerExists =
+            typeof json.demo === "object" && json.demo && typeof json.demo.rpc_sabotage_marker_exists === "boolean"
+              ? json.demo.rpc_sabotage_marker_exists
+              : null;
+          metaState.rpcSabotageMarkerMtimeUnix =
+            typeof json.demo === "object" && json.demo && typeof json.demo.rpc_sabotage_marker_mtime_unix === "number"
+              ? json.demo.rpc_sabotage_marker_mtime_unix
+              : null;
+          metaState.rpcProxySabotageAfterSec =
+            typeof json.demo === "object" && json.demo && typeof json.demo.rpc_proxy_sabotage_after_sec === "number"
+              ? json.demo.rpc_proxy_sabotage_after_sec
+              : null;
+          metaState.rpcProxySabotageMarkerExists =
+            typeof json.demo === "object" && json.demo && typeof json.demo.rpc_proxy_sabotage_marker_exists === "boolean"
+              ? json.demo.rpc_proxy_sabotage_marker_exists
+              : null;
+          metaState.rpcProxySabotageMarkerMtimeUnix =
+            typeof json.demo === "object" && json.demo && typeof json.demo.rpc_proxy_sabotage_marker_mtime_unix === "number"
+              ? json.demo.rpc_proxy_sabotage_marker_mtime_unix
+              : null;
 
           el("lnkInsecure").href = metaState.insecureBase + "/start";
           el("insecureSrc").textContent = metaState.insecureBase + "/start";
@@ -2049,6 +2103,25 @@
               ti.textContent = "disabled";
             } else {
               ti.textContent = "unknown";
+            }
+          }
+
+          const rsi = el("rpcSabotageInfo");
+          if (rsi) {
+            const hostsAfter = metaState.rpcSabotageAfterSec;
+            const proxyAfter = metaState.rpcProxySabotageAfterSec;
+            const hosts = typeof hostsAfter === "number" && hostsAfter > 0 ? "hosts: " + rpcSabotageLabel("hosts") : null;
+            const proxy = typeof proxyAfter === "number" && proxyAfter > 0 ? "proxy: " + rpcSabotageLabel("proxy") : null;
+            if (hosts && proxy) {
+              rsi.textContent = hosts + " / " + proxy;
+            } else if (hosts) {
+              rsi.textContent = hosts;
+            } else if (proxy) {
+              rsi.textContent = proxy;
+            } else if (typeof hostsAfter === "number" || typeof proxyAfter === "number") {
+              rsi.textContent = "disabled";
+            } else {
+              rsi.textContent = "unknown";
             }
           }
 
@@ -2106,10 +2179,12 @@
 
           const scRpcSab = el("scRpcSabotage");
           if (scRpcSab) {
-            const demo = json && typeof json.demo === "object" && json.demo ? json.demo : null;
-            const a = demo && typeof demo.rpc_sabotage_after_sec === "number" ? demo.rpc_sabotage_after_sec : 0;
-            const b = demo && typeof demo.rpc_proxy_sabotage_after_sec === "number" ? demo.rpc_proxy_sabotage_after_sec : 0;
-            scRpcSab.textContent = "hosts=" + String(a || 0) + "s / proxy=" + String(b || 0) + "s";
+            const a = typeof metaState.rpcSabotageAfterSec === "number" ? metaState.rpcSabotageAfterSec : null;
+            const b = typeof metaState.rpcProxySabotageAfterSec === "number" ? metaState.rpcProxySabotageAfterSec : null;
+
+            const hostsLine = "hosts: " + (typeof a === "number" ? rpcSabotageLabel("hosts") : "unknown");
+            const proxyLine = "proxy: " + (typeof b === "number" ? rpcSabotageLabel("proxy") : "unknown");
+            scRpcSab.textContent = hostsLine + "\n" + proxyLine;
           }
 
           const scCmd = el("scenarioCommands");
@@ -2543,15 +2618,28 @@
             }
             if (demoLabel && demoKind) demoLabel += " (" + demoKind + ")";
 
+            const lines = [];
             if (demoLabel && runLabel && demoLabel !== runLabel) {
-              tamperEl.textContent = "demo: " + demoLabel + "\nrun: " + runLabel;
+              lines.push("tamper demo: " + demoLabel);
+              lines.push("tamper run: " + runLabel);
             } else if (demoLabel) {
-              tamperEl.textContent = demoLabel;
+              lines.push("tamper: " + demoLabel);
             } else if (runLabel) {
-              tamperEl.textContent = runLabel;
+              lines.push("tamper: " + runLabel);
             } else {
-              tamperEl.textContent = "?";
+              lines.push("tamper: ?");
             }
+
+            const hostsAfter = metaState.rpcSabotageAfterSec;
+            const proxyAfter = metaState.rpcProxySabotageAfterSec;
+            if (typeof hostsAfter === "number") {
+              lines.push("rpc_outage: " + rpcSabotageLabel("hosts"));
+            }
+            if (typeof proxyAfter === "number") {
+              lines.push("rpc_proxy: " + rpcSabotageLabel("proxy"));
+            }
+
+            tamperEl.textContent = lines.join("\n");
           }
 
           const ratio = (a, b) => {
@@ -3007,12 +3095,18 @@
               const now = Date.now();
               const after = metaState.tamperAfterSec;
               const markerOk = metaState.tamperMarkerExists === true;
+              const rpcAfter = metaState.rpcSabotageAfterSec;
+              const rpcMarkerOk = metaState.rpcSabotageMarkerExists === true;
+              const proxyAfter = metaState.rpcProxySabotageAfterSec;
+              const proxyMarkerOk = metaState.rpcProxySabotageMarkerExists === true;
 
               // Refresh meta periodically even when tamper is disabled.
               // This makes the UI update correctly when the stack is restarted from a terminal
               // (docker compose overlays) instead of via the operator buttons.
               const tamperArmed = typeof after === "number" && after > 0;
-              const fast = tamperArmed && !markerOk;
+              const rpcArmed = typeof rpcAfter === "number" && rpcAfter > 0;
+              const proxyArmed = typeof proxyAfter === "number" && proxyAfter > 0;
+              const fast = (tamperArmed && !markerOk) || (rpcArmed && !rpcMarkerOk) || (proxyArmed && !proxyMarkerOk);
               const intervalMs = fast ? 1000 : 5000;
               if (now - lastMetaFetchAtMs < intervalMs) return;
 

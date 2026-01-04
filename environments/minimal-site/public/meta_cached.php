@@ -79,7 +79,11 @@ $demo = [
     'tamper_marker_mtime_unix' => null,
     'tamper_armed_at_unix' => null,
     'rpc_sabotage_after_sec' => null,
+    'rpc_sabotage_marker_exists' => null,
+    'rpc_sabotage_marker_mtime_unix' => null,
     'rpc_proxy_sabotage_after_sec' => null,
+    'rpc_proxy_sabotage_marker_exists' => null,
+    'rpc_proxy_sabotage_marker_mtime_unix' => null,
 ];
 
 $demoStateMtime = null;
@@ -116,6 +120,32 @@ if ($markerPath !== '' && !str_contains($markerPath, "\0")) {
         $mt = @filemtime($markerPath);
         if (is_int($mt) && $mt > 0) {
             $demo['tamper_marker_mtime_unix'] = $mt;
+        }
+    }
+}
+
+$rpcMarkerPath = '/etc/blackcat/.blackcat_testing_rpc_sabotage_done';
+if ($rpcMarkerPath !== '' && !str_contains($rpcMarkerPath, "\0")) {
+    $rpcMarkerExists = is_file($rpcMarkerPath) && !is_link($rpcMarkerPath);
+    $demo['rpc_sabotage_marker_exists'] = $rpcMarkerExists;
+    if ($rpcMarkerExists) {
+        clearstatcache(true, $rpcMarkerPath);
+        $mt = @filemtime($rpcMarkerPath);
+        if (is_int($mt) && $mt > 0) {
+            $demo['rpc_sabotage_marker_mtime_unix'] = $mt;
+        }
+    }
+}
+
+$rpcProxyMarkerPath = '/etc/blackcat/.blackcat_testing_rpc_proxy_sabotage_done';
+if ($rpcProxyMarkerPath !== '' && !str_contains($rpcProxyMarkerPath, "\0")) {
+    $rpcProxyMarkerExists = is_file($rpcProxyMarkerPath) && !is_link($rpcProxyMarkerPath);
+    $demo['rpc_proxy_sabotage_marker_exists'] = $rpcProxyMarkerExists;
+    if ($rpcProxyMarkerExists) {
+        clearstatcache(true, $rpcProxyMarkerPath);
+        $mt = @filemtime($rpcProxyMarkerPath);
+        if (is_int($mt) && $mt > 0) {
+            $demo['rpc_proxy_sabotage_marker_mtime_unix'] = $mt;
         }
     }
 }

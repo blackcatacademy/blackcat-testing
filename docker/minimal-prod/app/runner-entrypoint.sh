@@ -11,6 +11,7 @@ TAMPER_AFTER_SEC="${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
 TAMPER_KIND="${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
 TAMPER_MARKER="/etc/blackcat/.blackcat_testing_tamper_done"
 RPC_SABOTAGE_AFTER_SEC="${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
+RPC_SABOTAGE_MARKER="/etc/blackcat/.blackcat_testing_rpc_sabotage_done"
 
 is_uint() {
   case "$1" in
@@ -75,8 +76,16 @@ schedule_rpc_outage() {
     sleep "$RPC_SABOTAGE_AFTER_SEC" || exit 0
     echo "[runner-entrypoint] simulating RPC outage by poisoning /etc/hosts after ${RPC_SABOTAGE_AFTER_SEC}s" >&2
     if [ -w /etc/hosts ]; then
-      printf '\n127.0.0.1 rpc.layeredge.io\n' >> /etc/hosts || true
-      printf '\n::1 rpc.layeredge.io\n' >> /etc/hosts || true
+      printf '\n127.0.0.1 rpc.layeredge.io # blackcat-testing rpc sabotage\n' >> /etc/hosts || true
+      printf '\n::1 rpc.layeredge.io # blackcat-testing rpc sabotage\n' >> /etc/hosts || true
+
+      if grep -q "blackcat-testing rpc sabotage" /etc/hosts 2>/dev/null; then
+        echo "rpc sabotage executed $(date -u +%FT%TZ) after_sec=${RPC_SABOTAGE_AFTER_SEC}" > "$RPC_SABOTAGE_MARKER" || true
+        chmod 0640 "$RPC_SABOTAGE_MARKER" || true
+        chgrp www-data "$RPC_SABOTAGE_MARKER" >/dev/null 2>&1 || true
+      else
+        echo "[runner-entrypoint] WARN: rpc sabotage marker not written (hosts append verification failed)" >&2
+      fi
     else
       echo "[runner-entrypoint] WARN: /etc/hosts is not writable; cannot sabotage RPC" >&2
     fi
