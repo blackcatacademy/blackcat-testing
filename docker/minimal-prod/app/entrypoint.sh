@@ -608,13 +608,16 @@ if [ "$FORCE_PROVISION" = "1" ] && [ -f "$TAMPER_FILE" ]; then
   rm -f "$TAMPER_FILE" >/dev/null 2>&1 || true
 fi
 
+TAMPER_ALREADY_DONE="0"
 if [ -f "$TAMPER_MARKER" ]; then
   if [ "$FORCE_PROVISION" = "1" ]; then
     echo "[entrypoint] tamper marker exists but force-provision is enabled; resetting marker: ${TAMPER_MARKER}" >&2
     rm -f "$TAMPER_MARKER" >/dev/null 2>&1 || true
   else
-    echo "[entrypoint] tamper marker exists, disabling tamper scheduling: ${TAMPER_MARKER}" >&2
-    TAMPER_AFTER_SEC="0"
+    echo "[entrypoint] tamper marker exists; skipping re-schedule: ${TAMPER_MARKER}" >&2
+    # Keep the configured schedule in demo.state.json so the UI can show the scenario and its execution.
+    # We only skip re-scheduling to avoid repeated tamper after container restarts.
+    TAMPER_ALREADY_DONE="1"
   fi
 fi
 
@@ -648,6 +651,7 @@ export BLACKCAT_DEMO_STATE_TAMPER_MARKER_PATH="$TAMPER_MARKER"
 export BLACKCAT_DEMO_STATE_TAMPER_FILE_PATH="$TAMPER_FILE"
 export BLACKCAT_DEMO_STATE_RPC_SABOTAGE_AFTER_SEC="$RPC_SABOTAGE_AFTER_SEC"
 export BLACKCAT_DEMO_STATE_RPC_PROXY_SABOTAGE_AFTER_SEC="$RPC_PROXY_SABOTAGE_AFTER_SEC"
+export BLACKCAT_DEMO_STATE_TAMPER_ALREADY_DONE="$TAMPER_ALREADY_DONE"
 
 php -r '
   $dir = "/etc/blackcat/demo";
@@ -684,6 +688,7 @@ php -r '
     "tamper" => [
       "after_sec" => $after,
       "kind" => $kind,
+      "already_done" => (getenv("BLACKCAT_DEMO_STATE_TAMPER_ALREADY_DONE") === "1"),
       "wait_for_trust_ok" => $waitForTrustOk,
       "wait_max_sec" => $waitMax,
       "marker_path" => $marker,
@@ -708,7 +713,7 @@ php -r '
   @chgrp($path, "www-data");
 ' || true
 
-if [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then
+if [ "$TAMPER_ALREADY_DONE" = "0" ] && [ "$TAMPER_AFTER_SEC" != "0" ] && [ "$TAMPER_AFTER_SEC" != "" ]; then
   (
     if [ "$TAMPER_WAIT_FOR_TRUST_OK" = "1" ]; then
       echo "[entrypoint] waiting for first trusted status before scheduling tamper (max ${TAMPER_WAIT_MAX_SEC}s)" >&2

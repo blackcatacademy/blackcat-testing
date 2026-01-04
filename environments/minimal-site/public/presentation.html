@@ -586,6 +586,49 @@
         line-height: 1.35;
         letter-spacing: 0;
       }
+      .rpcSabotageBox {
+        margin-top: 6px;
+        display: grid;
+        gap: 6px;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+      .rpcSabRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 6px 8px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.18);
+      }
+      .rpcSabRow.ok {
+        border-color: rgba(34, 197, 94, 0.35);
+        background: rgba(34, 197, 94, 0.06);
+      }
+      .rpcSabRow.warn {
+        border-color: rgba(245, 158, 11, 0.45);
+        background: rgba(245, 158, 11, 0.06);
+      }
+      .rpcSabRow.bad {
+        border-color: rgba(239, 68, 68, 0.45);
+        background: rgba(239, 68, 68, 0.07);
+      }
+      .rpcSabKey {
+        color: rgba(255, 255, 255, 0.75);
+        font-weight: 800;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.02em;
+      }
+      .rpcSabVal {
+        font-weight: 900;
+        color: rgba(255, 255, 255, 0.92);
+        text-align: right;
+      }
 
       details {
         margin-top: 10px;
@@ -1006,7 +1049,16 @@
             </div>
             <div class="stat">
               <div class="statLabel">RPC sabotage</div>
-              <div id="scRpcSabotage" class="statVal multiline">?</div>
+              <div id="scRpcSabotage" class="rpcSabotageBox" aria-label="rpc sabotage state">
+                <div id="scRpcSabHostsRow" class="rpcSabRow">
+                  <span class="rpcSabKey">hosts</span>
+                  <span id="scRpcSabHostsVal" class="rpcSabVal">loading…</span>
+                </div>
+                <div id="scRpcSabProxyRow" class="rpcSabRow">
+                  <span class="rpcSabKey">proxy</span>
+                  <span id="scRpcSabProxyVal" class="rpcSabVal">loading…</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1465,6 +1517,7 @@
         tamperAfterSec: null,
         tamperKind: null,
         tamperArmedAtUnix: null,
+        tamperAlreadyDone: null,
         tamperMarkerExists: null,
         tamperMarkerMtimeUnix: null,
         rpcSabotageAfterSec: null,
@@ -1537,9 +1590,13 @@
       function tamperLabel() {
         const after = metaState.tamperAfterSec;
         const kind = metaState.tamperKind;
-        const executed = metaState.tamperMarkerExists === true;
+        const executed = metaState.tamperMarkerExists === true || metaState.tamperAlreadyDone === true;
+        if (executed) {
+          const ts = formatUnixTs(metaState.tamperMarkerMtimeUnix);
+          return "executed / " + (kind || "unknown") + (ts ? " @ " + ts : "");
+        }
         if (typeof after === "number" && after > 0) {
-          return executed ? "executed / " + (kind || "unknown") : "armed / " + (kind || "unknown") + " @ " + after + "s";
+          return "armed / " + (kind || "unknown") + " @ " + after + "s";
         }
         if (typeof after === "number" && after === 0) return "disabled";
         return "unknown";
@@ -2038,6 +2095,10 @@
               : null;
           metaState.tamperArmedAtUnix =
             typeof json.demo === "object" && json.demo && typeof json.demo.tamper_armed_at_unix === "number" ? json.demo.tamper_armed_at_unix : null;
+          metaState.tamperAlreadyDone =
+            typeof json.demo === "object" && json.demo && typeof json.demo.tamper_already_done === "boolean"
+              ? json.demo.tamper_already_done
+              : null;
           metaState.tamperMarkerExists =
             typeof json.demo === "object" && json.demo && typeof json.demo.tamper_marker_exists === "boolean"
               ? json.demo.tamper_marker_exists
@@ -2096,9 +2157,11 @@
           if (ti) {
             const after = metaState.tamperAfterSec;
             const kind = metaState.tamperKind;
-            const executed = metaState.tamperMarkerExists === true;
-            if (typeof after === "number" && after > 0) {
-              ti.textContent = executed ? ("executed / " + (kind || "unknown")) : ("armed / " + (kind || "unknown") + " @ " + after + "s");
+            const executed = metaState.tamperMarkerExists === true || metaState.tamperAlreadyDone === true;
+            if (executed) {
+              ti.textContent = "executed / " + (kind || "unknown");
+            } else if (typeof after === "number" && after > 0) {
+              ti.textContent = "armed / " + (kind || "unknown") + " @ " + after + "s";
             } else if (typeof after === "number" && after === 0) {
               ti.textContent = "disabled";
             } else {
@@ -2149,13 +2212,13 @@
             const after = metaState.tamperAfterSec;
             const markerOk = metaState.tamperMarkerExists === true;
             const markerAt = typeof metaState.tamperMarkerMtimeUnix === "number" ? metaState.tamperMarkerMtimeUnix : null;
-            if (typeof after === "number" && after === 0) {
-              scTamperExec.textContent = "n/a";
-              scTamperExec.className = "statVal ok";
-            } else if (markerOk) {
+            if (markerOk) {
               const ts = markerAt ? new Date(markerAt * 1000).toISOString().replace(/\.\d{3}Z$/, "Z") : null;
               scTamperExec.textContent = ts ? ("TRIGGERED @ " + ts) : "TRIGGERED";
               scTamperExec.className = "statVal bad";
+            } else if (typeof after === "number" && after === 0) {
+              scTamperExec.textContent = "n/a";
+              scTamperExec.className = "statVal ok";
             } else if (typeof after === "number" && after > 0) {
               scTamperExec.textContent = "pending";
               scTamperExec.className = "statVal warn";
@@ -2179,12 +2242,28 @@
 
           const scRpcSab = el("scRpcSabotage");
           if (scRpcSab) {
-            const a = typeof metaState.rpcSabotageAfterSec === "number" ? metaState.rpcSabotageAfterSec : null;
-            const b = typeof metaState.rpcProxySabotageAfterSec === "number" ? metaState.rpcProxySabotageAfterSec : null;
+            const hostsAfter = typeof metaState.rpcSabotageAfterSec === "number" ? metaState.rpcSabotageAfterSec : null;
+            const proxyAfter = typeof metaState.rpcProxySabotageAfterSec === "number" ? metaState.rpcProxySabotageAfterSec : null;
 
-            const hostsLine = "hosts: " + (typeof a === "number" ? rpcSabotageLabel("hosts") : "unknown");
-            const proxyLine = "proxy: " + (typeof b === "number" ? rpcSabotageLabel("proxy") : "unknown");
-            scRpcSab.textContent = hostsLine + "\n" + proxyLine;
+            const hostsExecuted = metaState.rpcSabotageMarkerExists === true;
+            const proxyExecuted = metaState.rpcProxySabotageMarkerExists === true;
+
+            const rowKind = (after, executed) => {
+              if (executed) return "bad";
+              if (typeof after === "number" && after > 0) return "warn";
+              if (typeof after === "number" && after === 0) return "ok";
+              return "warn";
+            };
+
+            const hostsRow = el("scRpcSabHostsRow");
+            const hostsVal = el("scRpcSabHostsVal");
+            if (hostsVal) hostsVal.textContent = typeof hostsAfter === "number" ? rpcSabotageLabel("hosts") : "unknown";
+            if (hostsRow) hostsRow.className = "rpcSabRow " + rowKind(hostsAfter, hostsExecuted);
+
+            const proxyRow = el("scRpcSabProxyRow");
+            const proxyVal = el("scRpcSabProxyVal");
+            if (proxyVal) proxyVal.textContent = typeof proxyAfter === "number" ? rpcSabotageLabel("proxy") : "unknown";
+            if (proxyRow) proxyRow.className = "rpcSabRow " + rowKind(proxyAfter, proxyExecuted);
           }
 
           const scCmd = el("scenarioCommands");

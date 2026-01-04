@@ -75,6 +75,7 @@ if (is_file($operatorTokenPath) && !is_link($operatorTokenPath) && is_readable($
 $demo = [
     'tamper_after_sec' => null,
     'tamper_kind' => null,
+    'tamper_already_done' => null,
     'tamper_marker_exists' => null,
     'tamper_marker_mtime_unix' => null,
     'tamper_armed_at_unix' => null,
@@ -163,6 +164,11 @@ if (is_array($demoState)) {
         $kind = $tamper['kind'] ?? null;
         if (is_string($kind) && trim($kind) !== '') {
             $demo['tamper_kind'] = trim($kind);
+        }
+
+        $alreadyDone = $tamper['already_done'] ?? null;
+        if (is_bool($alreadyDone)) {
+            $demo['tamper_already_done'] = $alreadyDone;
         }
     }
 
