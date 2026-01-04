@@ -2996,28 +2996,35 @@
         const title = el("trustTitle");
         if (title) title.textContent = "JS starting…";
 
-        const poll = (() => {
-          let healthInFlight = false;
-          let metaInFlight = false;
-          let outboxInFlight = false;
-          let soakInFlight = false;
+          const poll = (() => {
+            let healthInFlight = false;
+            let metaInFlight = false;
+            let outboxInFlight = false;
+            let soakInFlight = false;
+            let lastMetaFetchAtMs = 0;
 
-          const pollMeta = async () => {
-            const after = metaState.tamperAfterSec;
-            const markerOk = metaState.tamperMarkerExists === true;
-            if (!(typeof after === "number" && after > 0) || markerOk) {
-              return;
-            }
+            const pollMeta = async () => {
+              const now = Date.now();
+              const after = metaState.tamperAfterSec;
+              const markerOk = metaState.tamperMarkerExists === true;
 
-            if (metaInFlight) return;
-            metaInFlight = true;
-            try {
-              // Refresh only to observe the tamper marker transition (so the UI doesn't claim a tamper happened early).
-              await refreshMeta();
-            } finally {
-              metaInFlight = false;
-            }
-          };
+              // Refresh meta periodically even when tamper is disabled.
+              // This makes the UI update correctly when the stack is restarted from a terminal
+              // (docker compose overlays) instead of via the operator buttons.
+              const tamperArmed = typeof after === "number" && after > 0;
+              const fast = tamperArmed && !markerOk;
+              const intervalMs = fast ? 1000 : 5000;
+              if (now - lastMetaFetchAtMs < intervalMs) return;
+
+              if (metaInFlight) return;
+              metaInFlight = true;
+              try {
+                await refreshMeta();
+              } finally {
+                metaInFlight = false;
+                lastMetaFetchAtMs = now;
+              }
+            };
 
           const pollHealth = async () => {
             if (healthInFlight) return;
