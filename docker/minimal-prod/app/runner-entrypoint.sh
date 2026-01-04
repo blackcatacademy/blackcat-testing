@@ -10,6 +10,7 @@ set -eu
 TAMPER_AFTER_SEC="${BLACKCAT_TESTING_TAMPER_AFTER_SEC:-0}"
 TAMPER_KIND="${BLACKCAT_TESTING_TAMPER_KIND:-unexpected_file}"
 TAMPER_MARKER="/etc/blackcat/.blackcat_testing_tamper_done"
+RPC_SABOTAGE_AFTER_SEC="${BLACKCAT_TESTING_RPC_SABOTAGE_AFTER_SEC:-0}"
 
 is_uint() {
   case "$1" in
@@ -61,5 +62,27 @@ schedule_filesystem_tamper() {
 
 schedule_filesystem_tamper
 
-exec php /srv/blackcat/site/bin/trust-runner.php
+schedule_rpc_outage() {
+  if ! is_uint "$RPC_SABOTAGE_AFTER_SEC"; then
+    return 0
+  fi
 
+  if [ "$RPC_SABOTAGE_AFTER_SEC" = "0" ]; then
+    return 0
+  fi
+
+  (
+    sleep "$RPC_SABOTAGE_AFTER_SEC" || exit 0
+    echo "[runner-entrypoint] simulating RPC outage by poisoning /etc/hosts after ${RPC_SABOTAGE_AFTER_SEC}s" >&2
+    if [ -w /etc/hosts ]; then
+      printf '\n127.0.0.1 rpc.layeredge.io\n' >> /etc/hosts || true
+      printf '\n::1 rpc.layeredge.io\n' >> /etc/hosts || true
+    else
+      echo "[runner-entrypoint] WARN: /etc/hosts is not writable; cannot sabotage RPC" >&2
+    fi
+  ) &
+}
+
+schedule_rpc_outage
+
+exec php /srv/blackcat/site/bin/trust-runner.php
