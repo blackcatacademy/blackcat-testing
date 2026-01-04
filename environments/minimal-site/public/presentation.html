@@ -716,6 +716,31 @@
         display: inline-flex;
       }
 
+      .lockdownMini {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        z-index: 9998;
+        display: none;
+        max-width: min(720px, calc(100vw - 32px));
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(239, 68, 68, 0.45);
+        background: rgba(10, 10, 12, 0.92);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(8px);
+      }
+      .lockdownMini.show {
+        display: block;
+      }
+      .lockdownMini .row {
+        gap: 8px;
+      }
+      .lockdownMini button {
+        padding: 8px 10px;
+        border-radius: 12px;
+      }
+
       /* ===== Tx-outbox incident panel ===== */
       .incidentPanel {
         margin-top: 12px;
@@ -785,9 +810,21 @@
             <strong>What happened?</strong> The kernel detected a mismatch (integrity/config/RPC). In production this is a hard stop: no bypass switch.
           </div>
           <div class="actions">
-            <span class="pill">Tip: use <strong>Scenario switchboard</strong> → reset to trusted.</span>
+            <button class="btnPrimary" id="btnLockdownResetTrusted">Run: reset to trusted</button>
+            <button class="btnDanger" id="btnLockdownResetHard">Run: hard reset</button>
+            <button id="btnLockdownHide">Hide overlay</button>
           </div>
         </div>
+      </div>
+    </div>
+    <div id="lockdownMini" class="lockdownMini" aria-live="polite" aria-label="BlackCat lockdown mini banner">
+      <div class="row">
+        <span class="pill"><strong>LOCKDOWN</strong></span>
+        <span class="pill">reason: <span id="lockdownMiniCodes" class="k">?</span></span>
+        <span class="pill">next check: <strong id="lockdownMiniNext">~?</strong></span>
+        <span class="pill">tx-outbox: <strong id="lockdownMiniOutbox">?</strong></span>
+        <button class="btnPrimary" id="btnLockdownShow">Show</button>
+        <button id="btnLockdownResetTrustedMini">Reset trusted</button>
       </div>
     </div>
     <header>
@@ -1461,6 +1498,7 @@
         lastReadAllowed: null,
         lastWriteAllowed: null,
         lastOutboxSummary: null,
+        dismissed: false,
       };
 
       const EST_RUNNER_TICK_SEC = 5; // demo default (trust-runner interval); used only for UI countdown.
@@ -1506,6 +1544,7 @@
 
       function renderLockdownOverlay() {
         const overlay = el("lockdownOverlay");
+        const mini = el("lockdownMini");
         if (!overlay) return;
 
         const trusted = lockdownUi.lastTrusted === true;
@@ -1515,29 +1554,44 @@
 
         if (trusted) {
           overlay.classList.remove("show");
+          if (mini) mini.classList.remove("show");
+          lockdownUi.dismissed = false;
           return;
         }
 
         if (lockdownUi.lastTrusted !== false) {
           // Unknown state: do not block the page.
           overlay.classList.remove("show");
+          if (mini) mini.classList.remove("show");
           return;
         }
 
-        overlay.classList.add("show");
+        if (lockdownUi.dismissed) {
+          overlay.classList.remove("show");
+          if (mini) mini.classList.add("show");
+        } else {
+          overlay.classList.add("show");
+          if (mini) mini.classList.remove("show");
+        }
 
         const codes = el("lockdownCodes");
         if (codes) codes.textContent = formatErrorCodes(lockdownUi.lastErrorCodes);
+        const miniCodes = el("lockdownMiniCodes");
+        if (miniCodes) miniCodes.textContent = formatErrorCodes(lockdownUi.lastErrorCodes);
 
         const next = el("lockdownNext");
         const nextSec = computeNextKernelCheckInSec(lockdownUi.lastCheckedAtUnix);
         if (next) next.textContent = typeof nextSec === "number" ? "~" + nextSec + "s" : "~?";
+        const miniNext = el("lockdownMiniNext");
+        if (miniNext) miniNext.textContent = typeof nextSec === "number" ? "~" + nextSec + "s" : "~?";
 
         const tamper = el("lockdownTamper");
         if (tamper) tamper.textContent = tamperLabel();
 
         const outbox = el("lockdownOutbox");
         if (outbox) outbox.textContent = typeof lockdownUi.lastOutboxSummary === "string" ? lockdownUi.lastOutboxSummary : "unknown";
+        const miniOutbox = el("lockdownMiniOutbox");
+        if (miniOutbox) miniOutbox.textContent = typeof lockdownUi.lastOutboxSummary === "string" ? lockdownUi.lastOutboxSummary : "unknown";
 
         const sub = el("lockdownSub");
         if (sub) {
@@ -1549,6 +1603,28 @@
             sub.textContent = "Sensitive operations are blocked until trust is restored.";
           }
         }
+      }
+
+      async function tryResetTrusted(label) {
+        if (metaState.operatorUrl && metaState.operatorToken) {
+          lockdownUi.dismissed = false;
+          renderLockdownOverlay();
+          await operatorRunScenario("reset_trusted", label || "reset to trusted");
+          return;
+        }
+        await copyText(scenario.resetTrusted, "reset to trusted");
+        log("[lockdown] operator unavailable; copied reset command (run in terminal).", "warn");
+      }
+
+      async function tryResetHard(label) {
+        if (metaState.operatorUrl && metaState.operatorToken) {
+          lockdownUi.dismissed = false;
+          renderLockdownOverlay();
+          await operatorRunScenario("reset_hard", label || "hard reset");
+          return;
+        }
+        await copyText(scenario.resetHard, "hard reset");
+        log("[lockdown] operator unavailable; copied hard reset command (run in terminal).", "warn");
       }
 
       function setNode(id, state) {
@@ -2824,6 +2900,18 @@
       bindClick("btnRunScenarioControllerSwap", () => operatorRunScenario("controller_swap", "controller swap"));
       bindClick("btnRunScenarioRpcOutage", () => operatorRunScenario("rpc_outage", "rpc outage"));
       bindClick("btnRunScenarioByzantineRpc", () => operatorRunScenario("byzantine_rpc", "byzantine rpc"));
+
+      bindClick("btnLockdownResetTrusted", () => tryResetTrusted("reset to trusted (lockdown)"));
+      bindClick("btnLockdownResetHard", () => tryResetHard("hard reset (lockdown)"));
+      bindClick("btnLockdownHide", () => {
+        lockdownUi.dismissed = true;
+        renderLockdownOverlay();
+      });
+      bindClick("btnLockdownShow", () => {
+        lockdownUi.dismissed = false;
+        renderLockdownOverlay();
+      });
+      bindClick("btnLockdownResetTrustedMini", () => tryResetTrusted("reset to trusted (mini)"));
 
       bindClick("btnAttackKeyInsecure", () => runAttack("key_exfil", "insecure"));
       bindClick("btnAttackKeySecure", () => runAttack("key_exfil", "secure"));
