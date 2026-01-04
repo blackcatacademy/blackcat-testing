@@ -2495,8 +2495,21 @@
 
           const tamperEl = el("soakTamper");
           if (tamperEl) {
-            const after = meta && typeof meta.tamper_after_sec === "number" ? meta.tamper_after_sec : null;
-            tamperEl.textContent = typeof after === "number" ? (after > 0 ? String(after) + "s" : "disabled") : "?";
+            const runAfter = meta && typeof meta.tamper_after_sec === "number" ? meta.tamper_after_sec : null;
+            const demoAfter = typeof metaState.tamperAfterSec === "number" ? metaState.tamperAfterSec : null;
+            const demoKind = typeof metaState.tamperKind === "string" && metaState.tamperKind.trim() !== "" ? metaState.tamperKind.trim() : null;
+
+            const fmt = (n) => (typeof n === "number" ? (n > 0 ? String(n) + "s" : "disabled") : "?");
+
+            if (typeof demoAfter === "number" && typeof runAfter === "number" && demoAfter !== runAfter) {
+              tamperEl.textContent = "demo=" + fmt(demoAfter) + (demoKind ? " (" + demoKind + ")" : "") + " / run=" + fmt(runAfter);
+            } else if (typeof demoAfter === "number") {
+              tamperEl.textContent = fmt(demoAfter) + (demoKind ? " (" + demoKind + ")" : "");
+            } else if (typeof runAfter === "number") {
+              tamperEl.textContent = fmt(runAfter);
+            } else {
+              tamperEl.textContent = "?";
+            }
           }
 
           const ratio = (a, b) => {
