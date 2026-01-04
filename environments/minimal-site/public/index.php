@@ -31,7 +31,12 @@ if (PHP_SAPI === 'cli-server') {
     if ($p !== '/' && str_starts_with($p, '/') && !str_contains($p, '..') && !str_contains($p, "\0")) {
         $candidate = __DIR__ . $p;
         if (is_file($candidate)) {
-            return false;
+            // Serve static assets directly, but route HTML through this router so we can set no-store headers.
+            // This avoids “stale UI” when the demo is rebuilt/restarted and the browser caches presentation pages.
+            $ext = strtolower((string) pathinfo($candidate, PATHINFO_EXTENSION));
+            if ($ext !== 'html') {
+                return false;
+            }
         }
     }
 }
@@ -82,6 +87,27 @@ if ($path === '/demo/soak/latest') {
 if ($path === '/demo/soak/report') {
     require __DIR__ . '/soak_report_cached.php';
     exit;
+}
+
+// Serve presentation HTML with no-store headers (avoid browser caching in demo flows).
+if ($path === '/presentation.html' || $path === '/dashboard.html') {
+    $file = __DIR__ . $path;
+    if (is_file($file)) {
+        $body = @file_get_contents($file);
+        if (!is_string($body)) {
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            header('Cache-Control: no-store');
+            echo "Unable to read page\n";
+            exit;
+        }
+
+        http_response_code(200);
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store');
+        echo $body;
+        exit;
+    }
 }
 
 require __DIR__ . '/../../vendor/autoload.php';
