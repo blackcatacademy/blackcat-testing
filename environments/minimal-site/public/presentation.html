@@ -2498,15 +2498,27 @@
             const runAfter = meta && typeof meta.tamper_after_sec === "number" ? meta.tamper_after_sec : null;
             const demoAfter = typeof metaState.tamperAfterSec === "number" ? metaState.tamperAfterSec : null;
             const demoKind = typeof metaState.tamperKind === "string" && metaState.tamperKind.trim() !== "" ? metaState.tamperKind.trim() : null;
+            const demoMarker = metaState.tamperMarkerExists === true;
+            const demoMarkerAt = typeof metaState.tamperMarkerMtimeUnix === "number" ? metaState.tamperMarkerMtimeUnix : null;
 
             const fmt = (n) => (typeof n === "number" ? (n > 0 ? String(n) + "s" : "disabled") : "?");
 
-            if (typeof demoAfter === "number" && typeof runAfter === "number" && demoAfter !== runAfter) {
-              tamperEl.textContent = "demo=" + fmt(demoAfter) + (demoKind ? " (" + demoKind + ")" : "") + " / run=" + fmt(runAfter);
+            const runLabel = typeof runAfter === "number" ? fmt(runAfter) : null;
+            let demoLabel = null;
+            if (demoMarker) {
+              const ts = typeof demoMarkerAt === "number" && demoMarkerAt > 0 ? new Date(demoMarkerAt * 1000).toISOString().replace(/\.\d{3}Z$/, "Z") : null;
+              demoLabel = "executed" + (ts ? " @ " + ts : "");
             } else if (typeof demoAfter === "number") {
-              tamperEl.textContent = fmt(demoAfter) + (demoKind ? " (" + demoKind + ")" : "");
-            } else if (typeof runAfter === "number") {
-              tamperEl.textContent = fmt(runAfter);
+              demoLabel = fmt(demoAfter);
+            }
+            if (demoLabel && demoKind) demoLabel += " (" + demoKind + ")";
+
+            if (demoLabel && runLabel && demoLabel !== runLabel) {
+              tamperEl.textContent = "demo=" + demoLabel + " / run=" + runLabel;
+            } else if (demoLabel) {
+              tamperEl.textContent = demoLabel;
+            } else if (runLabel) {
+              tamperEl.textContent = runLabel;
             } else {
               tamperEl.textContent = "?";
             }
