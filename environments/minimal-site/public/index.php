@@ -75,6 +75,14 @@ if ($path === '/demo/tx-outbox') {
     require __DIR__ . '/outbox_cached.php';
     exit;
 }
+if ($path === '/demo/soak/latest') {
+    require __DIR__ . '/soak_latest_cached.php';
+    exit;
+}
+if ($path === '/demo/soak/report') {
+    require __DIR__ . '/soak_report_cached.php';
+    exit;
+}
 
 require __DIR__ . '/../../vendor/autoload.php';
 
